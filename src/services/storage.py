@@ -1,0 +1,32 @@
+# src/services/storage.py
+import os
+import aiofiles
+from fastapi import UploadFile
+from uuid import uuid4
+from pathlib import Path
+
+from src.core.enums import FileFormat
+
+class StorageService:
+    def __init__(self, uploads_dir: str | Path = "uploads"):
+        self._uploads_dir=Path(uploads_dir)
+        self._uploads_dir.mkdir(parents=True, exist_ok=True)
+
+    async def save_upload(self, file: UploadFile) -> Path:
+        # Validate file format
+        fmt=self.validate_extension(file.filename)
+
+        # Generate a unique, secure destination path
+        safe_filename=f"{uuid4()}_{file.filename}"
+        dest=self._uploads_dir / safe_filename
+
+        # Stream the file to disk in 1MB chunks to prevent memory overload
+        async with aiofiles.open(dest, "wb") as f:
+            # Read chunks of 1024 * 1024 bytes (1MB)
+            while chunk := await file.read(1024 * 1024):
+                await f.write(chunk)
+
+        return dest
+
+    def validate_extension(self, filename: str | None) -> "FileFormat":
+        return FileFormat.from_filename(filename)
