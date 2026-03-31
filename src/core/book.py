@@ -1,0 +1,26 @@
+# src/core/book.py
+
+from datetime import datetime
+from typing import Optional
+from pydantic import BaseModel, Field, field_validator
+
+from src.core.helpers import _new_id, _now
+from src.core.enums import FileFormat
+
+class Book(BaseModel):
+    id: str = Field(default_factory=_new_id)
+    title: str
+    author: Optional[str] = None
+    source_format: FileFormat
+    source_filename: str
+    total_chapters: int = 0
+    ingested_at: datetime = Field(default_factory=_now)
+
+    @field_validator("title")
+    @classmethod
+    def title_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Book title cannot be empty")
+        return v.strip()
+
+    model_config = {"frozen": True}
