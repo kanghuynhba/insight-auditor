@@ -5,6 +5,8 @@ langchain-core
 langchain-text-splitters
 unstructured
 pypdf
+pymupdf
 python-dotenv
 httpx
 sqlalchemy
+
