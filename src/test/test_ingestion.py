@@ -54,4 +54,4 @@ def run_test(file_path: str):
             print(f"{' ':13} | {' ':5} | {indent}   预览: {preview}...")
 
 if __name__ == "__main__":
-    run_test("ai_engineering.pdf")
+    run_test("src/test/ai_engineering.pdf")
