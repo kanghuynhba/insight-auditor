@@ -2,7 +2,6 @@
 import os
 from src.core.enums import FileFormat
 from pathlib import Path
-from dotenv import load_dotenv()
 
 class IngestionService:
     def __init__():

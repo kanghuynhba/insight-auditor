@@ -16,10 +16,11 @@ class RawChapter:
     title: str
     raw_text: str
     index: int
+    level: int
 
 class PdfLoader:
     def __init__(self, settings: Settings):
-        _settings=settings
+        self._settings=settings
 
     def load(self, path: Path) -> Tuple[Book, List[Chapter]]:
         with fitz.open(str(path)) as doc:
@@ -35,15 +36,29 @@ class PdfLoader:
         )
 
         chapters=[]
+        active_parents: list[str | None] = [None] * (self._settings.DEEPEST_LEVEL + 1)
+
         for raw in raw_chapters:
-            chapters.append(
-                Chapter(
-                    book_id=book.id,
-                    title=raw.title,
-                    index=raw.index,
-                    raw_text=raw.raw_text
-                )
+            safe_level = min(raw.level, self._settings.DEEPEST_LEVEL)
+
+            parent_id = active_parents[raw.level-1] if safe_level > 1 else None
+
+            new_chapter = Chapter(
+                book_id=book.id,
+                title=raw.title,
+                index=raw.index,
+                raw_text=raw.raw_text,
+                level=safe_level,
+                parent_id=parent_id
             )
+
+            active_parents[safe_level] = new_chapter.id
+
+            # If we move from 2.1.5 back to 2.2, everything at level 3+ is reset
+            for i in range(safe_level + 1, len(active_parents)):
+                active_parents[i] = None
+
+            chapters.append(new_chapter)
 
         return book, chapters
 
@@ -83,7 +98,7 @@ class PdfLoader:
         raw_chapters = []
 
         for i in range(len(toc)):
-            _, title, start_page = toc[i]
+            level, title, start_page = toc[i]
 
             end_page = toc[i+1][2] if i + 1 < len(toc) else doc.page_count
             start_index = max(0, start_page - 1)
@@ -96,54 +111,62 @@ class PdfLoader:
 
             if chapter_text.strip():
                 raw_chapters.append(
-                    RawChapter(title=title, raw_text=chapter_text.strip(), index=i)
+                    RawChapter(
+                        title=title,
+                        raw_text=chapter_text.strip(),
+                        index=i,
+                        level=level
+                    )
                 )
 
         return raw_chapters
-
     def _extract_via_heuristic(self, doc: fitz.Document) -> List[RawChapter]:
-        """Extracts chapters by looking for large font sizes indicating headers."""
         raw_chapters = []
-        current_chapter_title = "Introduction"
-        current_chapter_text = ""
-        chapter_index = 0
+        current_text = ""
+        current_title = "Introduction"
+        current_level = 1
+        global_index = 0
 
         for page_num in range(doc.page_count):
-            page = doc[page_num]
-            blocks = page.get_text("dict").get("blocks", [])
-
+            blocks = doc[page_num].get_text("dict").get("blocks", [])
             for block in blocks:
-                if block.get("type") == 0:
-                    for line in block.get("lines", []):
-                        for span in line.get("spans", []):
-                            text = span.get("text", "").strip()
-                            font_size = span.get("size", 0)
+                if block.get("type") != 0: continue
 
-                            if font_size > 14 and len(text) > 2 and len(text) < 100:
-                                if current_chapter_text.strip():
-                                    raw_chapters.append(
-                                        RawChapter(
-                                            title=current_chapter_title,
-                                            raw_text=current_chapter_text.strip(),
-                                            index=chapter_index
-                                        )
-                                    )
-                                    chapter_index += 1
-                                    current_chapter_text = ""
+                for line in block.get("lines", []):
+                    for span in line.get("spans", []):
+                        text = span["text"].strip()
+                        size = span["size"]
 
-                                current_chapter_title = text
-                            else:
-                                current_chapter_text += text + " "
+                        # Refined Thresholds
+                        level = 0
+                        if size >= 20: level = 1       # Main Chapter
+                        elif 16 <= size < 20: level = 2 # Section
+                        elif 13 <= size < 16: level = 3 # Sub-section                        
 
-            current_chapter_text += "\n"
+                        if level > 0 and 2 < len(text) < 100:
+                            if current_text.strip():
+                                raw_chapters.append(RawChapter(
+                                    title=current_title,
+                                    raw_text=current_text.strip(),
+                                    index=global_index,
+                                    level=current_level
+                                ))
+                                global_index += 1
+                                current_text = ""
 
-        if current_chapter_text.strip():
-            raw_chapters.append(
-                RawChapter(
-                    title=current_chapter_title,
-                    raw_text=current_chapter_text.strip(),
-                    index=chapter_index
-                )
-            )
+                            current_title = text
+                            current_level = level
+                        else:
+                            current_text += text + " "
+            current_text += "\n"
+
+        # Final append
+        if current_text.strip():
+            raw_chapters.append(RawChapter(
+                title=current_title,
+                raw_text=current_text.strip(),
+                index=global_index,
+                level=current_level
+            ))
 
         return raw_chapters
