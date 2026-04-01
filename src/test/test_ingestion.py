@@ -4,7 +4,7 @@ from src.core.config import get_settings
 from src.infrastructure.loaders.pdf_loader import PdfLoader
 
 def run_test(file_path: str):
-    # 1. Load Settings (Automatically reads your .env)
+    # 1. Load Settings
     settings = get_settings()
 
     # 2. Initialize the Loader
@@ -19,20 +19,39 @@ def run_test(file_path: str):
     print(f"--- 📖 Processing: {path.name} ---")
     book, chapters = loader.load(path)
 
-    # 4. Inspect the results
+    # 4. Inspect Book Metadata
     print(f"\n✅ SUCCESS: Book Created")
     print(f"ID: {book.id}")
     print(f"Title: {book.title}")
-    print(f"Format: {book.source_format}")
-    print(f"Total Chapters: {book.total_chapters}")
-    print(f"Ingested At: {book.ingested_at}")
+    print(f"Total Chapters/Sections: {book.total_chapters}")
 
-    print(f"\n--- 📑 Chapter Breakdown ---")
+    print(f"\n--- 📑 Hierarchical Breakdown ---")
+    print(f"{'Index':<7} | {'Level':<5} | {'Title & Parent Info':<50} | {'Words'}")
+    print("-" * 85)
+
+    # Create a quick ID -> Title map for parent visualization
+    id_to_title = {ch.id: ch.title for ch in chapters}
+
     for ch in chapters:
-        # Show first 100 characters of text to verify extraction
-        preview = ch.raw_text[:100].replace('\n', ' ')
-        print(f"[{ch.index}] {ch.title:.<30} | Words: {ch.word_count:<5} | Preview: {preview}...")
+        # Create indentation based on level
+        indent = "  " * (ch.level - 1)
+        prefix = "┗━ " if ch.level > 1 else "MAIN "
+
+        # Format parent info
+        parent_info = ""
+        if ch.parent_id:
+            p_title = id_to_title.get(ch.parent_id, "Unknown")
+            parent_info = f" (Parent: {p_title[:20]}...)"
+
+        display_title = f"{indent}{prefix}{ch.title}"
+
+        # Print row
+        print(f"[{ch.index:03}] | L{ch.level:<4} | {display_title:<50} | {ch.word_count}")
+
+        # Optional: Print a tiny preview for deep levels to verify text
+        if ch.level > 2:
+            preview = ch.raw_text[:60].replace('\n', ' ')
+            print(f"{' ':13} | {' ':5} | {indent}   预览: {preview}...")
 
 if __name__ == "__main__":
-    # Change 'test_book.pdf' to whatever PDF you have handy
-    run_test("ai_engineering.pdf")
+    run_test("src/test/ai_engineering.pdf")
