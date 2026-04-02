@@ -36,10 +36,10 @@ class PdfLoader:
         )
 
         chapters=[]
-        active_parents: list[str | None] = [None] * (self._settings.DEEPEST_LEVEL + 1)
+        active_parents: list[str | None] = [None] * (self._settings.deepest_level + 1)
 
         for raw in raw_chapters:
-            safe_level = min(raw.level, self._settings.DEEPEST_LEVEL)
+            safe_level = min(raw.level, self._settings.deepest_level)
 
             parent_id = active_parents[raw.level-1] if safe_level > 1 else None
 

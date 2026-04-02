@@ -21,12 +21,16 @@ class Settings(BaseSettings):
     uploads_dir: Path = Path("./uploads")
 
     # Used by the Chunker in the IngestionService
-    chunk_size: int = 1000
+    chunk_size: int = 512
     chunk_overlap: int = 150
 
     # Application logic
-    max_hints_per_chapter: int=5
-    DEEPEST_LEVEL: int = 10
+    min_summary_words: int = 50
+    max_hints_per_session: int = 5
+    large_section_token_threshold: int = 4000
+
+    # Hierarchy config
+    deepest_level: int = 3 
 
     # Pydantic configuration
     model_config = SettingsConfigDict(
