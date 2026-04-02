@@ -26,7 +26,7 @@ class Settings(BaseSettings):
 
     # Application logic
     max_hints_per_chapter: int=5
-    DEEPEST_LEVEL: int = 3
+    DEEPEST_LEVEL: int = 10
 
     # Pydantic configuration
     model_config = SettingsConfigDict(

@@ -3,6 +3,7 @@
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, Field, field_validator
+from pathlib import Path
 
 from src.core.helpers import _new_id, _now
 from src.core.enums import FileFormat
@@ -12,6 +13,7 @@ class Book(BaseModel):
     title: str
     author: Optional[str] = None
     source_format: FileFormat
+    file_path: Path
     source_filename: str
     total_chapters: int = 0
     ingested_at: datetime = Field(default_factory=_now)
