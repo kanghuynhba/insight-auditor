@@ -4,11 +4,7 @@ from enum import IntEnum
 from pydantic import BaseModel, Feild
 
 from src.core.helpers import _new_id
-
-class Tier(IntEnum):
-    CRITICAL = 3,
-    IMPORTANT = 2,
-    NUANCE = 1,
+from src.core.enums import Tier
 
 TIER_WEIGHTS = {
     Tier.CRITICAL:3,

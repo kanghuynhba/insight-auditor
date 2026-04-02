@@ -3,6 +3,17 @@
 from enum import Enum
 from src.services.exceptions import UnsupportedFormatError
 
+class Tier(IntEnum):
+    CRITICAL = 3,
+    IMPORTANT = 2,
+    NUANCE = 1,
+
+class FactStatus(str, Enum):
+    FOUND = "Found"
+    PARTIAL = "Partial"
+    MISSING = "Missing"
+    CONTRADICTED = "Contradicted"
+
 class FileFormat(str, Enum):
     PDF="pdf"
     EPUB="epub"
@@ -20,4 +31,5 @@ class FileFormat(str, Enum):
             raise UnsupportedFormatError(
                 f"Unsupport file format: '.{ext}'. Only PDF and EPUB are allowed!"
             )
+
 
