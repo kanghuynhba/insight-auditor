@@ -1,11 +1,12 @@
 # src/core/audit.py
 
-from enum import Enum
 from datetime import datetime
-from pydantic import BaseModel, Field
+from enum import Enum
 
-from src.core.helpers import _new_id, _now
+from pydantic import BaseModel, Field
 from src.core.enums import FactStatus
+from src.core.helpers import _new_id, _now
+
 
 class UserSummary(BaseModel):
     id: str = Field(default_factory=_new_id)
@@ -16,11 +17,13 @@ class UserSummary(BaseModel):
     submmited_at: datetime = Field(default_factory=_now)
     model_config = {"frozen": True}
 
+
 class FactValidation(BaseModel):
     fact_id: str
     status: FactStatus
     evidence: str
     confidence: float
+
 
 class AuditReport(BaseModel):
     id: str = Field(default_factory=_new_id)

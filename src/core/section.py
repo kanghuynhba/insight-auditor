@@ -1,12 +1,12 @@
 # src/core/section.py
 
 from pydantic import BaseModel, Field, field_validator, model_validator
-
+from src.core.atomic_fact import AtomicFact
 from src.core.helpers import _new_id
+
 
 class Section(BaseModel):
     id: str = Field(default_factory=_new_id)
-    book_id: str
     chapter_id: str
     # "001.002.003"
     path_id: str
@@ -14,9 +14,10 @@ class Section(BaseModel):
     parent_path_id: str | None
     title: str
     raw_text: str
+    atomic_facts: list[AtomicFact]
     level: int
-    chunk_ids: list[str]=[]
-    word_count: int=0
+
+    word_count: int = 0
 
     # TODO Need to understand this
     @model_validator(mode="after")

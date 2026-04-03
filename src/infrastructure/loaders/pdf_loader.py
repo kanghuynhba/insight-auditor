@@ -1,68 +1,236 @@
 # src/infrastructure/loaders/pdf_loader.py
 
-import fitz
-from pathlib import Path
 from dataclasses import dataclass
-from typing import List, Tuple
+from pathlib import Path
+from typing import Dict, List, Tuple
 
-from src.core.config import Settings
+import fitz
 from src.core.book import Book
 from src.core.chapter import Chapter
+from src.core.config import Settings
 from src.core.enums import FileFormat
+from src.core.helpers import _new_id
+from src.core.section import Section
+
 
 @dataclass
-class RawChapter:
+class _RawEntry:
     """Internal data structure to hold extraction results before domain mapping."""
+
     title: str
     raw_text: str
     index: int
     level: int
 
+
+@dataclass
+class _PathCounter:
+    """
+    Generates path ids (e.g. '001', '001.002')
+    """
+
+    def __init__(self) -> None:
+        self._counters: Dict[int, int] = {}
+
+    def next(self, level: int) -> str:
+        """Generates a breadcrumb string like '001.002.004'."""
+
+        self._counters[level] = self._counters.get(level, 0) + 1
+
+        levels_to_reset = [l for l in self._counters if l > level]
+
+        for l in levels_to_reset:
+            del self._counters[l]
+
+        # Build path string: 001.002...
+        parts = [f"{self._counters.get(i, 0):03d}" for i in range(1, level + 1)]
+        return ".".join(parts)
+
+
 class PdfLoader:
     def __init__(self, settings: Settings):
-        self._settings=settings
+        self._settings = settings
 
-    def load(self, path: Path) -> Tuple[Book, List[Chapter]]:
+    def load(self, path: Path) -> Book:
         with fitz.open(str(path)) as doc:
-            title=self._detect_title(doc, path)
-            raw_chapters=self._extract_chapters(doc)
+            title = self._detect_title(doc, path)
+            raw_entries = self._extract_entries(doc)
+
+        book_id = _new_id()
+        chapters = self._build_chapters(raw_entries, book_id)
 
         # Instantiate the frozen Book model
-        book= Book(
+        return Book(
+            id=book_id,
             title=title,
             source_format=FileFormat.PDF,
+            file_path=path,
             source_filename=path.name,
-            total_chapters=len(raw_chapters)
+            total_chapters=len(chapters),
+            chapters=chapters,
         )
 
-        chapters=[]
-        active_parents: list[str | None] = [None] * (self._settings.deepest_level + 1)
+    def _extract_entries(self, doc: fitz.Document) -> List[_RawEntry]:
+        """
+        Orchestrates chapter extraction. Tries TOC first, falls back to heuristics.
+        """
+        toc = doc.get_toc()
 
-        for raw in raw_chapters:
-            safe_level = min(raw.level, self._settings.deepest_level)
+        if toc:
+            return self._extract_via_toc(doc, toc)
 
-            parent_id = active_parents[raw.level-1] if safe_level > 1 else None
+        return self._extract_via_heuristic(doc)
 
-            new_chapter = Chapter(
-                book_id=book.id,
-                title=raw.title,
-                index=raw.index,
-                raw_text=raw.raw_text,
-                level=safe_level,
-                parent_id=parent_id
-            )
+    def _extract_via_toc(self, doc: fitz.Document, toc: list) -> List[_RawEntry]:
+        """Extracts chapters cleanly using the PDF's internal Table of Contents."""
+        entries: list[_RawEntry] = []
 
-            active_parents[safe_level] = new_chapter.id
+        for i in range(len(toc)):
+            level, title, start_page = toc[i]
 
-            # If we move from 2.1.5 back to 2.2, everything at level 3+ is reset
-            for i in range(safe_level + 1, len(active_parents)):
-                active_parents[i] = None
+            end_page = toc[i + 1][2] if i + 1 < len(toc) else doc.page_count
+            start_index = max(0, start_page - 1)
+            end_index = max(0, end_page - 1)
 
-            chapters.append(new_chapter)
+            text = self._extract_page_range(doc, start_index, end_index)
 
-        return book, chapters
+            if not text:
+                continue
 
-    def _detect_title(self, doc: fitz.Document, file_path: Path) -> str:
+            entries.append(_RawEntry(title=title, raw_text=text, index=i, level=level))
+
+        return entries
+
+    def _extract_via_heuristic(self, doc: fitz.Document) -> List[_RawEntry]:
+        """
+        Treats large font spans as headings.  Font-size thresholds:
+            >= 20 pt  → level 1 (chapter)
+            16–19 pt  → level 2 (section)
+            13–15 pt  → level 3 (subsection)
+        Everything else is body text that belongs to the current heading.
+        """
+        entries: list[_RawEntry] = []
+        pending_title = "Introduction"
+        pending_level = 1
+        pending_text: list[str] = []
+        index = 0
+
+        def _flush() -> None:
+            nonlocal index
+            body = " ".join(pending_text).strip()
+            if body:
+                entries.append(
+                    _RawEntry(
+                        title=pending_title,
+                        raw_text=body,
+                        level=pending_level,
+                        index=index,
+                    )
+                )
+                index += 1
+
+        for page in doc:
+            for block in page.get_text("dict").get("blocks", []):
+                if block.get("type") != 0:  # 0 = text block
+                    continue
+                for line in block.get("lines", []):
+                    for span in line.get("spans", []):
+                        text = span["text"].strip()
+                        if not text:
+                            continue
+
+                        level = self._heading_level(span["size"])
+
+                        if level and 2 < len(text) < 100:
+                            _flush()
+                            pending_title = text
+                            pending_level = level
+                            pending_text = []
+                        else:
+                            pending_text.append(text)
+
+            pending_text.append("\n")  # preserve page breaks in body
+
+        _flush()
+        return entries
+
+    def _build_chapters(self, entries: list[_RawEntry], book_id: str) -> list[Chapter]:
+        """
+        Level-1 entries become Chapters.
+        Level-2+ entries become Sections inside the most-recent Chapter.
+
+        Entries deeper than settings.deepest_level are silently skipped.
+        """
+        chapters: list[Chapter] = []
+        active_chapter: Optional[Chapter] = None
+        counter = _PathCounter()
+
+        for entry in entries:
+            if entry.level > self._settings.deepest_level:
+                continue
+
+            path_id = counter.next(entry.level)
+
+            if entry.level == 1:
+                active_chapter = Chapter(
+                    book_id=book_id,
+                    title=entry.title,
+                    path_id=path_id,
+                    index=entry.index,
+                )
+                chapters.append(active_chapter)
+            else:
+                if active_chapter is None:
+                    synthetic_path = counter.next(1)
+                    active_chapter = Chapter(
+                        book_id=book_id,
+                        title="Preface",
+                        path_id=synthetic_path,
+                        index=0,
+                    )
+                    chapters.append(active_chapter)
+
+                parent_path = ".".join(path_id.split(".")[:-1])
+
+                section = Section(
+                    chapter_id=active_chapter.id,
+                    path_id=path_id,
+                    title=entry.title,
+                    parent_path_id=parent_path,
+                    level=entry.level,
+                    raw_text=entry.raw_text,
+                    atomic_facts=[],
+                )
+                active_chapter.sections.append(section)
+
+        return chapters
+
+    def _extract_page_range(self, doc: fitz.Document, first: int, last: int) -> str:
+        parts = []
+        for page_num in range(first, min(last, doc.page_count)):
+            parts.append(doc[page_num].get_text("text"))
+        return "\n\n".join(parts).strip()
+
+    @staticmethod
+    def _heading_level(font_size: float) -> Optional[int]:
+        """Returns 1, 2, or 3 for heading sizes; None for body text."""
+
+        if font_size >= 20:
+
+            return 1
+
+        if font_size >= 16:
+
+            return 2
+
+        if font_size >= 13:
+
+            return 3
+
+        return None
+
+    @staticmethod
+    def _detect_title(doc: fitz.Document, file_path: Path) -> str:
         """
         Checks metadata first, then falls back to a beautifully formatted filename.
         """
@@ -81,92 +249,3 @@ class PdfLoader:
         clean_filename = file_path.stem.replace("_", " ").replace("-", " ").title()
 
         return clean_filename
-
-    def _extract_chapters(self, doc: fitz.Document) -> List[RawChapter]:
-        """
-        Orchestrates chapter extraction. Tries TOC first, falls back to heuristics.
-        """
-        toc = doc.get_toc()
-
-        if toc:
-            return self._extract_via_toc(doc, toc)
-
-        return self._extract_via_heuristic(doc)
-
-    def _extract_via_toc(self, doc: fitz.Document, toc: list) -> List[RawChapter]:
-        """Extracts chapters cleanly using the PDF's internal Table of Contents."""
-        raw_chapters = []
-
-        for i in range(len(toc)):
-            level, title, start_page = toc[i]
-
-            end_page = toc[i+1][2] if i + 1 < len(toc) else doc.page_count
-            start_index = max(0, start_page - 1)
-            end_index = max(0, end_page - 1)
-
-            chapter_text = ""
-            for page_num in range(start_index, end_index):
-                if page_num < doc.page_count:
-                    chapter_text += doc[page_num].get_text("text") + "\n\n"
-
-            if chapter_text.strip():
-                raw_chapters.append(
-                    RawChapter(
-                        title=title,
-                        raw_text=chapter_text.strip(),
-                        index=i,
-                        level=level
-                    )
-                )
-
-        return raw_chapters
-    def _extract_via_heuristic(self, doc: fitz.Document) -> List[RawChapter]:
-        raw_chapters = []
-        current_text = ""
-        current_title = "Introduction"
-        current_level = 1
-        global_index = 0
-
-        for page_num in range(doc.page_count):
-            blocks = doc[page_num].get_text("dict").get("blocks", [])
-            for block in blocks:
-                if block.get("type") != 0: continue
-
-                for line in block.get("lines", []):
-                    for span in line.get("spans", []):
-                        text = span["text"].strip()
-                        size = span["size"]
-
-                        # Refined Thresholds
-                        level = 0
-                        if size >= 20: level = 1       # Main Chapter
-                        elif 16 <= size < 20: level = 2 # Section
-                        elif 13 <= size < 16: level = 3 # Sub-section                        
-
-                        if level > 0 and 2 < len(text) < 100:
-                            if current_text.strip():
-                                raw_chapters.append(RawChapter(
-                                    title=current_title,
-                                    raw_text=current_text.strip(),
-                                    index=global_index,
-                                    level=current_level
-                                ))
-                                global_index += 1
-                                current_text = ""
-
-                            current_title = text
-                            current_level = level
-                        else:
-                            current_text += text + " "
-            current_text += "\n"
-
-        # Final append
-        if current_text.strip():
-            raw_chapters.append(RawChapter(
-                title=current_title,
-                raw_text=current_text.strip(),
-                index=global_index,
-                level=current_level
-            ))
-
-        return raw_chapters

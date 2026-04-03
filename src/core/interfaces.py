@@ -2,9 +2,10 @@
 
 from abc import ABC, abstractmethod
 
-from src.core.models import Section, Chapter
 from src.core.atomic_fact import AtomicFact
-from src.core.audit import UserSummary, FactValidation, AuditReport
+from src.core.audit import AuditReport, FactValidation, UserSummary
+from src.core.models import Chapter, Section
+
 
 class LLMInterface(ABC):
     """Contract for all Generative AI operations."""
@@ -15,7 +16,9 @@ class LLMInterface(ABC):
         pass
 
     @abstractmethod
-    def validate_facts(self, summary: str, facts: list[AtomicFact]) -> list[FactValidation]:
+    def validate_facts(
+        self, summary: str, facts: list[AtomicFact]
+    ) -> list[FactValidation]:
         """Compares user summary against a list of facts (Entailment)."""
         pass
 
@@ -28,6 +31,7 @@ class LLMInterface(ABC):
     def generate_structural_map(self, text: str) -> str:
         """Generates a high-level outline/summary for a Chapter."""
         pass
+
 
 class VectorRepository(ABC):
     """Contract for semantic search (ChromaDB, Pinecone, etc.)."""
@@ -42,6 +46,7 @@ class VectorRepository(ABC):
         """Performs semantic search restricted by a specific path_id prefix."""
         pass
 
+
 class AtomicFactRepository(ABC):
     """Contract for storing the 'Source of Truth' facts (SQLite/Postgres)."""
 
@@ -55,6 +60,7 @@ class AtomicFactRepository(ABC):
         """Retrieves facts for a specific section or an entire chapter (prefix match)."""
         pass
 
+
 class SummaryRepository(ABC):
     """Contract for tracking user submissions and attempt counts."""
 
@@ -67,6 +73,7 @@ class SummaryRepository(ABC):
     def get_latest_attempt(self, section_id: str) -> int:
         """Returns the highest attempt_number for a section to increment for the next."""
         pass
+
 
 class AuditRepository(ABC):
     """Contract for storing final scored reports."""

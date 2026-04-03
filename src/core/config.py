@@ -2,15 +2,18 @@
 import os
 from functools import lru_cache
 from pathlib import Path
-from pydantic import SecretStr, HttpUrl
+
+from pydantic import HttpUrl, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
 
 class Settings(BaseSettings):
     """
     Application settings. Pydantic will automatically load these from
     environment variables or a .env file.
     """
-    # Azure OpenAI configuration 
+
+    # Azure OpenAI configuration
     azure_openai_api_key: SecretStr
     azure_openai_endpoint: HttpUrl
     openai_api_version: str
@@ -30,14 +33,13 @@ class Settings(BaseSettings):
     large_section_token_threshold: int = 4000
 
     # Hierarchy config
-    deepest_level: int = 3 
+    deepest_level: int = 3
 
     # Pydantic configuration
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore"
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
+
 
 @lru_cache()
 def get_settings() -> Settings:

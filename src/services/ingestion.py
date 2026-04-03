@@ -1,14 +1,15 @@
 # src/services/ingestion.py
 import os
-from src.core.enums import FileFormat
 from pathlib import Path
 
-class IngestionService:
-    def __init__():
-        _settings=
+from src.core.enums import FileFormat
 
-    def _load(self, path: Path, fmt: FileFormat):
-        if fmt==FileFormat.PDF:
+
+class IngestionService:
+    def __init__(self, settings: Settings):
+        _settings = settings
+
+    def _load(self, path: Path, fmt: FileFormat) -> Book:
+        if fmt == FileFormat.PDF:
             return PdfLoader(seft._settings).load(path)
         return EpubLoader(seft._settings).load(path)
-

@@ -1,8 +1,9 @@
 # src/core/chapter.py
 
 from pydantic import BaseModel, Field, field_validator, model_validator
-
 from src.core.helpers import _new_id
+from src.core.section import Section
+
 
 class Chapter(BaseModel):
     id: str = Field(default_factory=_new_id)
@@ -23,3 +24,6 @@ class Chapter(BaseModel):
         return v
 
     model_config = {"frozen": True}
+
+
+Chapter.model_rebuild()
