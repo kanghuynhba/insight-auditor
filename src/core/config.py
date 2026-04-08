@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     # Used by the Chunker in the IngestionService
     chunk_size: int = 512
     chunk_overlap: int = 150
+    chunk_context_size: int = 1500
 
     # Application logic
     min_summary_words: int = 50

@@ -23,3 +23,6 @@ build/
 # Environment variables
 .env
 secrets.toml
+
+# Docs files
+.pdf
