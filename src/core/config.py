@@ -17,15 +17,19 @@ class Settings(BaseSettings):
     azure_openai_api_key: SecretStr
     azure_openai_endpoint: HttpUrl
     openai_api_version: str
-    azure_deployment_name: str
+    generative_model: str
+    embedding_model: str
+    registry_name: str
+    api_type: str
 
     # Storage path
-    chroma_db_path: Path = Path("./chroma_db")
+    lance_db_path: Path = Path("./lancedb")
     uploads_dir: Path = Path("./uploads")
+    vector_index_name: str = "textbooks"
 
     # Used by the Chunker in the IngestionService
-    chunk_size: int = 512
-    chunk_overlap: int = 150
+    chunk_size: int = 800
+    chunk_overlap: int = 200
     chunk_context_size: int = 1500
 
     # Application logic
@@ -34,7 +38,7 @@ class Settings(BaseSettings):
     large_section_token_threshold: int = 4000
 
     # Hierarchy config
-    deepest_level: int = 3
+    deepest_level: int = 7
 
     # Pydantic configuration
     model_config = SettingsConfigDict(

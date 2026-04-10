@@ -24,5 +24,17 @@ build/
 .env
 secrets.toml
 
-# Docs files
-.pdf
+# Database / LanceDB storage
+# Excludes the data folder and any potential leftover lock/manifest files
+lancedb/
+*.lance
+
+# Uploads and User Data
+# Excludes the folder where you store textbooks
+uploads/
+
+# Document files
+# Prevents accidental tracking of raw data files
+*.pdf
+*.csv
+*.jsonl

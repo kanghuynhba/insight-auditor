@@ -48,20 +48,32 @@ class NaturalBoundaryChunker(Chunker):
         overlapped = self._build_overlapped_texts(raw_chunks)
         context_windows = self._build_context_windows(overlapped)
 
-        return [
-            TextChunk(
-                id=str(uuid4()),
-                book_id=book_id,
-                section_id=section_id,
-                path_id=path_id,
-                text=overlapped[i],
-                context_text=context_windows[i],
-                chunk_index=i,
-                chunk_level=self._detect_level(overlapped[i]),
-                word_count=len(overlapped[i].split()),
+        current_start = 0
+        chunks = []
+
+        for i, chunk_text in enumerate(overlapped):
+            start_idx = text.find(chunk_text, current_start)
+            if start_idx == -1:
+                start_idx = current_start
+            end_idx = start_idx + len(chunk_text)
+            current_start = end_idx
+            chunks.append(
+                TextChunk(
+                    id=str(uuid4()),
+                    book_id=book_id,
+                    section_id=section_id,
+                    path_id=path_id,
+                    text=overlapped[i],
+                    start_char=start_idx,
+                    end_char=end_idx,
+                    context_text=context_windows[i],
+                    chunk_index=i,
+                    chunk_level=self._detect_level(overlapped[i]),
+                    word_count=len(overlapped[i].split()),
+                )
             )
-            for i in range(len(overlapped))
-        ]
+
+        return chunks
 
     def _clean(self, text: str) -> str:
         text = self._FORM_FEED.sub("\n", text)

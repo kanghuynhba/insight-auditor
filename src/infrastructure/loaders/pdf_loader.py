@@ -5,12 +5,12 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 import fitz
-from src.core.book import Book
-from src.core.chapter import Chapter
 from src.core.config import Settings
-from src.core.enums import FileFormat
 from src.core.helpers import _new_id
-from src.core.section import Section
+from src.core.models import Book, Chapter, Section
+
+from .file_type import FileType
+from .loader import Loader
 
 
 @dataclass
@@ -47,7 +47,7 @@ class _PathCounter:
         return ".".join(parts)
 
 
-class PdfLoader:
+class PdfLoader(Loader):
     def __init__(self, settings: Settings):
         self._settings = settings
 
@@ -63,7 +63,7 @@ class PdfLoader:
         return Book(
             id=book_id,
             title=title,
-            source_format=FileFormat.PDF,
+            source_format=FileType.Pdf,
             file_path=path,
             source_filename=path.name,
             total_chapters=len(chapters),

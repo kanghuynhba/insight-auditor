@@ -2,32 +2,33 @@
 
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, List, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
-from src.core.atomic_fact import AtomicFact
-from src.core.chapter import Chapter
-from src.core.enums import FileFormat
 from src.core.helpers import _new_id, _now
+from src.infrastructure.loaders.file_type import FileType
 
 
-class Book(BaseModel):
+class Section(BaseModel):
     id: str = Field(default_factory=_new_id)
+    chapter_id: str
+    path_id: str
+    parent_path_id: Optional[str] = None
     title: str
-    author: Optional[str] = None
-    source_format: FileFormat
-    file_path: Path
-    source_filename: str
-    total_chapters: int = 0
-    chapters: list[Chapter] = Field(default_factory=list)
-    ingested_at: datetime = Field(default_factory=_now)
+    raw_text: str
+    atomic_facts: List[Any] = Field(
+        default_factory=list
+    )  # Replace 'any' with AtomicFact
+    level: int
+    word_count: int = 0
 
-    @field_validator("title")
-    @classmethod
-    def title_not_empty(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("Book title cannot be empty")
-        return v.strip()
+    @model_validator(mode="after")
+    def compute_word_count(self) -> "Section":
+        if self.word_count == 0 and self.raw_text:
+            count = len(self.raw_text.split())
+            # object.__setattr__ is the correct way to bypass the 'frozen' restriction
+            object.__setattr__(self, "word_count", count)
+        return self
 
     model_config = {"frozen": True}
 
@@ -36,12 +37,10 @@ class Chapter(BaseModel):
     id: str = Field(default_factory=_new_id)
     book_id: str
     title: str
-    # If there are Section inside Chapter
     path_id: str
     index: int
-    sections: list[Section] = Field(default_factory=list)
-    # LLM-generated of this chapter
-    structural_map: str | None = None
+    sections: List[Section] = Field(default_factory=list)
+    structural_map: Optional[str] = None
 
     @field_validator("index")
     @classmethod
@@ -53,27 +52,32 @@ class Chapter(BaseModel):
     model_config = {"frozen": True}
 
 
-class Section(BaseModel):
+class Book(BaseModel):
     id: str = Field(default_factory=_new_id)
-    chapter_id: str
-    # "001.002.003"
-    path_id: str
-    # "001.002"
-    parent_path_id: str | None
     title: str
-    raw_text: str
-    atomic_facts: list[AtomicFact]
-    level: int
+    author: Optional[str] = None
+    source_format: FileType
+    file_path: Path
+    source_filename: str
+    total_chapters: int = 0
+    chapters: List[Chapter] = Field(default_factory=list)
+    ingested_at: datetime = Field(default_factory=_now)
 
-    word_count: int = 0
+    @field_validator("title")
+    @classmethod
+    def title_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Book title cannot be empty")
+        return v.strip()
 
-    # TODO Need to understand this
-    @model_validator(mode="after")
-    def compute_word_count(self) -> "Section":
-        if self.word_count == 0 and self.raw_text:
-            count = len(self.raw_text.split())
-            # Standard assignment fails on frozen models, so we bypass:
-            object.__setattr__(self, "word_count", count)
-        return self
+    @property
+    def all_sections(self) -> List[Section]:
+        """Flattens the chapter-section hierarchy"""
+        return [sec for ch in self.chapters for sec in ch.sections]
 
     model_config = {"frozen": True}
+
+
+Section.model_rebuild()
+Chapter.model_rebuild()
+Book.model_rebuild()

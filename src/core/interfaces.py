@@ -33,20 +33,6 @@ class LLMInterface(ABC):
         pass
 
 
-class VectorRepository(ABC):
-    """Contract for semantic search (ChromaDB, Pinecone, etc.)."""
-
-    @abstractmethod
-    def save_chunks(self, book_id: str, chunks: list[dict]) -> None:
-        """Persists text embeddings to the vector store."""
-        pass
-
-    @abstractmethod
-    def search_chunks(self, query: str, path_filter: str, top_k: int) -> list[dict]:
-        """Performs semantic search restricted by a specific path_id prefix."""
-        pass
-
-
 class AtomicFactRepository(ABC):
     """Contract for storing the 'Source of Truth' facts (SQLite/Postgres)."""
 

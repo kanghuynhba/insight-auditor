@@ -4,7 +4,7 @@
 from typing import Any
 
 import pytest
-from src.core.config import Settings
+from src.core.config import Settings, get_settings
 from src.infrastructure.chunking.natural_boundary_chunker import NaturalBoundaryChunker
 from src.infrastructure.chunking.text_chunk import TextChunk
 
@@ -141,3 +141,31 @@ class TestNaturalBoundaryChunker:
             )
             == []
         )
+
+
+def test_chunker_produces_output():
+    settings = get_settings()
+    chunker = NaturalBoundaryChunker(settings)
+
+    # Use the same text length as your real sections (~2800 chars)
+    sample_text = (
+        "This is a test sentence about distributed systems. " * 60
+    )  # ~3000 chars
+
+    chunks = chunker.chunk_section(
+        section_id="test-section-id",
+        book_id="test-book-id",
+        path_id="003.001",
+        text=sample_text,
+    )
+
+    print(f"\nchunk_size setting:    {settings.chunk_size}")
+    print(f"chunk_overlap setting: {settings.chunk_overlap}")
+    print(f"Chunks produced:       {len(chunks)}")
+    if chunks:
+        print(f"First chunk text_len:  {len(chunks[0].text)}")
+
+    assert len(chunks) > 0, (
+        f"Chunker returned empty list for {len(sample_text)}-char input. "
+        f"chunk_size={settings.chunk_size}, overlap={settings.chunk_overlap}"
+    )
