@@ -6,9 +6,9 @@ from src.core.exceptions import UnsupportedFormatError
 
 
 class Tier(IntEnum):
-    CRITICAL = (3,)
-    IMPORTANT = (2,)
-    NUANCE = (1,)
+    CRITICAL = 3
+    IMPORTANT = 2
+    NUANCE = 1
 
 
 class FactStatus(str, Enum):

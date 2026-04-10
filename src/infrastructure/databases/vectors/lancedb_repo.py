@@ -28,17 +28,12 @@ class ChunkSchema(LanceModel):
 
 class LanceDBRepository(VectorStore):
     def __init__(self, settings: Settings):
-        raw_url = str(settings.azure_openai_endpoint)
-        # Strip any path suffix — endpoint must be base URL only
-        clean_endpoint = raw_url.split("/openai")[0].rstrip("/")
-
         self._openai = AzureOpenAI(
             api_key=settings.azure_openai_api_key.get_secret_value(),
-            azure_endpoint=clean_endpoint,
+            azure_endpoint=str(settings.azure_openai_endpoint),
             api_version=str(settings.openai_api_version),
         )
         self._embedding_model = str(settings.embedding_model)
-
         self._db = lancedb.connect(str(settings.lance_db_path))
         self.table_name = settings.vector_index_name
         self._table = self._init_table()

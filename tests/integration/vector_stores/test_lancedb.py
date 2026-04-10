@@ -20,19 +20,19 @@ def test_ingestion_pipeline_integration():
     loaders = {FileType.Pdf: PdfLoader(settings)}
     service = IngestionService(chunker=chunker, loaders=loaders, vector_db=vector_db)
 
-    pdf_path = Path("uploads/ai_engineering.pdf")
+    pdf_path = Path("uploads/introduction_to_algorithms.pdf")
     if not pdf_path.exists():
         pytest.skip(f"Test file not found at {pdf_path}")
 
     loader = loaders[FileType.Pdf]
     book = loader.load(pdf_path)
-    print(f"\n📖 Book loaded: '{book.title}' — {len(book.all_sections)} sections")
+    print(f"\nBook loaded: '{book.title}' — {len(book.all_sections)} sections")
 
     book = service.ingest_file(pdf_path, FileType.Pdf)
 
     df = vector_db._table.to_pandas()
-    print(f"📊 Chunks stored: {len(df)}")
+    print(f"Chunks stored: {len(df)}")
     assert len(df) > 0
     assert "vector" in df.columns
     assert len(df["vector"].iloc[0]) == 1536
-    print("✅ Done.")
+    print("Done.")

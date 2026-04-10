@@ -3,7 +3,7 @@ import os
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import HttpUrl, SecretStr
+from pydantic import HttpUrl, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
+
+    @field_validator("azure_openai_endpoint", mode="before")
+    @classmethod
+    def clean_openai_endpoint(cls, v: str) -> str:
+        return str(v).split("/openai")[0].rstrip("/")
 
 
 @lru_cache()
