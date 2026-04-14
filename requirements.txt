@@ -9,4 +9,14 @@ pymupdf
 python-dotenv
 httpx
 sqlalchemy
+pandas
+pytest
+lancedb
+openai
+litellm==1.82.6
+anyio
+pytest-asyncio
+pytest-tornasync
+pytest-trio
+pytest-twisted
 

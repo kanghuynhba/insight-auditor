@@ -4,8 +4,8 @@ import logging
 from typing import Any, Unpack
 
 import litellm
-from src.llm.completion.base import LLMCompletion
-from src.llm.types import (
+from src.infrastructure.llm.completion.completion import LLMCompletion
+from src.infrastructure.llm.types import (
     LLMCompletionArgs,
     LLMCompletionMessagesParam,
     LLMCompletionResponse,
@@ -91,7 +91,11 @@ class LiteLLMCompletion(LLMCompletion):
         }
 
         if response_format is not None:
-            args["response_format"] = {"type": "json_object"}[cite:57]
+            if (
+                not hasattr(response_format, "__origin__")
+                or response_format.__origin__ != list
+            ):
+                args["response_format"] = {"type": "json_object"}
 
         return args
 
@@ -100,16 +104,27 @@ class LiteLLMCompletion(LLMCompletion):
         content: str, response_format: type[ResponseFormat]
     ) -> ResponseFormat:
         """
-        Parses the raw string content into the requested Pydantic model.
+        Parses the raw string content into the requested format.
+        Supports Pydantic models, list[T], and dict.
         """
         import json
 
         try:
-            # Clean up potential markdown fences if the LLM adds them
+            # Clean up potential markdown fences
             clean_content = content.strip().removeprefix("```json").removesuffix("```")
             data = json.loads(clean_content)
-            return response_format.model_validate(data)
+
+            # Check if response_format is a list (e.g., list[Dict[str, Any]])
+            origin = getattr(response_format, "__origin__", None)
+            if origin is list:
+                # For list[T], return data as is (assumes data is already a list)
+                return data
+            # Check if it's a Pydantic model
+            if hasattr(response_format, "model_validate"):
+                return response_format.model_validate(data)
+            # Fallback: return raw data
+            return data
         except Exception as e:
             raise ValueError(
                 f"Failed to parse LLM response into {response_format.__name__}: {e}"
-            )
+            ) from e

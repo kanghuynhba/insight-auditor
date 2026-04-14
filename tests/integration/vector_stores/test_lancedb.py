@@ -1,3 +1,5 @@
+# tests/integration/vector_stores/test_lancedb.py
+
 import os
 from pathlib import Path
 
@@ -20,7 +22,7 @@ def test_ingestion_pipeline_integration():
     loaders = {FileType.Pdf: PdfLoader(settings)}
     service = IngestionService(chunker=chunker, loaders=loaders, vector_db=vector_db)
 
-    pdf_path = Path("uploads/introduction_to_algorithms.pdf")
+    pdf_path = Path("uploads/ddia.pdf")
     if not pdf_path.exists():
         pytest.skip(f"Test file not found at {pdf_path}")
 

@@ -1,0 +1,9 @@
+CREATE DATABASE IF NOT EXISTS insight_auditor;
+
+use insight_auditor;
+
+CREATE TABLE IF NOT EXISTS atomic_facts (
+    id VARCHAR(255) PRIMARY KEY,
+    body LONGTEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);

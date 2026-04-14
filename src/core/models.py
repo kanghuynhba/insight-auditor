@@ -5,12 +5,12 @@ from pathlib import Path
 from typing import Any, List, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
-from src.core.helpers import _new_id, _now
+from src.core.helpers import new_id, now
 from src.infrastructure.loaders.file_type import FileType
 
 
 class Section(BaseModel):
-    id: str = Field(default_factory=_new_id)
+    id: str = Field(default_factory=new_id)
     chapter_id: str
     path_id: str
     parent_path_id: Optional[str] = None
@@ -34,7 +34,7 @@ class Section(BaseModel):
 
 
 class Chapter(BaseModel):
-    id: str = Field(default_factory=_new_id)
+    id: str = Field(default_factory=new_id)
     book_id: str
     title: str
     path_id: str
@@ -53,7 +53,7 @@ class Chapter(BaseModel):
 
 
 class Book(BaseModel):
-    id: str = Field(default_factory=_new_id)
+    id: str = Field(default_factory=new_id)
     title: str
     author: Optional[str] = None
     source_format: FileType
@@ -61,7 +61,7 @@ class Book(BaseModel):
     source_filename: str
     total_chapters: int = 0
     chapters: List[Chapter] = Field(default_factory=list)
-    ingested_at: datetime = Field(default_factory=_now)
+    ingested_at: datetime = Field(default_factory=now)
 
     @field_validator("title")
     @classmethod

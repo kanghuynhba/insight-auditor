@@ -5,16 +5,16 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 from src.core.enums import FactStatus
-from src.core.helpers import _new_id, _now
+from src.core.helpers import new_id, now
 
 
 class UserSummary(BaseModel):
-    id: str = Field(default_factory=_new_id)
+    id: str = Field(default_factory=new_id)
     section_id: str
     text: str
     word_count: int
     attempt_number: int = 1
-    submmited_at: datetime = Field(default_factory=_now)
+    submited_at: datetime = Field(default_factory=now)
     model_config = {"frozen": True}
 
 
@@ -26,7 +26,7 @@ class FactValidation(BaseModel):
 
 
 class AuditReport(BaseModel):
-    id: str = Field(default_factory=_new_id)
+    id: str = Field(default_factory=new_id)
     summary_id: str
     section_id: str
     score: float = 0.0
@@ -34,5 +34,5 @@ class AuditReport(BaseModel):
     omissions: list[str] = []
     misconceptions: list[str] = []
     score_delta: float | None = None
-    generated_at: datetime = Field(default_factory=_now)
+    generated_at: datetime = Field(default_factory=now)
     model_config = {"frozen": True}

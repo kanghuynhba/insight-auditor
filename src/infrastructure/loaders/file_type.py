@@ -1,5 +1,7 @@
 from enum import StrEnum
 
+from src.core.exceptions import UnsupportedFormatError
+
 
 class FileType(StrEnum):
     """enums for file types"""

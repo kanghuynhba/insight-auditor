@@ -2,11 +2,11 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import fitz
 from src.core.config import Settings
-from src.core.helpers import _new_id
+from src.core.helpers import new_id
 from src.core.models import Book, Chapter, Section
 
 from .file_type import FileType
@@ -56,7 +56,7 @@ class PdfLoader(Loader):
             title = self._detect_title(doc, path)
             raw_entries = self._extract_entries(doc)
 
-        book_id = _new_id()
+        book_id = new_id()
         chapters = self._build_chapters(raw_entries, book_id)
 
         # Instantiate the frozen Book model

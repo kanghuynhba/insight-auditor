@@ -17,8 +17,15 @@ ATOMIC_FACT_SYSTEM = (
 
 ATOMIC_FACT_USER = """\
 -Goal-
-Extract every discrete, atomic knowledge claim from the section text below.
+Extract the most important atomic knowledge claims from the section text below.
+Return AT MOST 8 facts total. Prefer quality over quantity — omit anything that is
+already implied by a higher-ranked fact or that a competent reader would infer.
 For each claim assign a Criticality Rank and return ONLY a valid JSON array.
+
+-Budget-
+Rank 1 (CRITICAL):  2–3 facts maximum. Only foundational logic and core definitions.
+Rank 2 (IMPORTANT): 3–4 facts maximum. Specific numbers, thresholds, named rules.
+Rank 3 (NUANCE):    1–2 facts maximum. Only if genuinely non-obvious.
 
 -Ranking Rules-
 Rank 1 (CRITICAL)  — Foundational logic, core definitions, primary mechanisms.

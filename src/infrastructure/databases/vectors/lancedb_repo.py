@@ -1,9 +1,10 @@
 import threading
 import time
+from typing import Any
 
 import lancedb
-import pyarrow as pa
 from lancedb.pydantic import LanceModel, Vector
+from lancedb.table import LanceTable
 from openai import AzureOpenAI, RateLimitError
 from src.core.config import Settings
 from src.infrastructure.chunking.text_chunk import TextChunk
@@ -39,7 +40,7 @@ class LanceDBRepository(VectorStore):
         self._table = self._init_table()
         self._write_lock = threading.Lock()
 
-    def _init_table(self):
+    def _init_table(self) -> "LanceTable":
         if self.table_name in self._db.list_tables():
             return self._db.open_table(self.table_name)
         return self._db.create_table(
@@ -79,9 +80,12 @@ class LanceDBRepository(VectorStore):
         with self._write_lock:  # ← serialize writes, parallelize embeddings
             self._table.add(data)
 
-    def search_chunks(self, query: str, book_id: str, path_id: str, top_k: int = 5):
+    def search_chunks(
+        self, query: str, book_id: str, path_id: str, top_k: int = 5
+    ) -> list[dict[str, Any]]:
         query_vector = self._embed([query])[0]
         where_filter = f"book_id = '{book_id}' AND path_id LIKE '{path_id}%'"
+
         return (
             self._table.search(query_vector)
             .where(where_filter, prefilter=True)
@@ -91,3 +95,18 @@ class LanceDBRepository(VectorStore):
 
     def delete_book(self, book_id: str) -> None:
         self._table.delete(f"book_id = '{book_id}'")
+
+    async def get_chunks_by_book(self, book_id: str) -> list[dict[str, Any]]:
+        """Retrieve all chunks belonging to a given book."""
+        import asyncio
+
+        def _sync_query():
+            dummy = [0.0] * 1536
+            return (
+                self._table.search(dummy)
+                .where(f"book_id = '{book_id}'", prefilter=True)
+                .limit(100000)
+                .to_list()
+            )
+
+        return await asyncio.to_thread(_sync_query)

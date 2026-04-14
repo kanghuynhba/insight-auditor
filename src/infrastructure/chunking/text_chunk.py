@@ -1,13 +1,13 @@
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field, model_validator
-from src.core.helpers import _new_id
+from src.core.helpers import new_id
 
 
 class TextChunk(BaseModel):
     """Represents a strictly sized slice of text ready for vector embedding."""
 
-    id: str = Field(default_factory=_new_id)
+    id: str = Field(default_factory=new_id)
     book_id: str
     section_id: str
     path_id: str
