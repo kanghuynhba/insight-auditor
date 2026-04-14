@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import aiofiles
 from fastapi import UploadFile
-from src.infrastructure.loader.file_type import FileType
+from src.infrastructure.loaders.file_type import FileType
 
 
 class StorageService:

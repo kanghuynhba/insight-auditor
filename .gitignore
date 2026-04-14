@@ -38,3 +38,6 @@ uploads/
 *.pdf
 *.csv
 *.jsonl
+
+# Agent markdown
+AGENTS.md

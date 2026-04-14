@@ -50,6 +50,18 @@ class Settings(BaseSettings):
     def clean_openai_endpoint(cls, v: str) -> str:
         return str(v).split("/openai")[0].rstrip("/")
 
+    @property
+    def litellm_config(self) -> dict:
+        """
+        Returns a dictionary formatted for litellm.completion()
+        """
+        return {
+            "model": f"azure/{self.generative_model}",
+            "api_key": self.azure_openai_api_key.get_secret_value(),
+            "base_url": str(self.azure_openai_endpoint),
+            "api_version": self.openai_api_version,
+        }
+
 
 @lru_cache()
 def get_settings() -> Settings:

@@ -1,32 +1,4 @@
-# src/services/ingestion.py
-import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from pathlib import Path
-from typing import Dict
-
-from src.core.models import Book
-from src.infrastructure.chunking.chunker import Chunker
-from src.infrastructure.databases.vectors.vector_store import VectorStore
-from src.infrastructure.loaders.file_type import FileType
-from src.infrastructure.loaders.loader import Loader
-
-
-class IngestionService:
-    def __init__(
-        self,
-        chunker: Chunker,
-        loaders: Dict[FileType, Loader],
-        vector_db: VectorStore,
-        max_workers: int = 8,
-    ):
-        self.loaders = loaders
-        self.chunker = chunker
-        self.vector_db = vector_db
-        self.max_workers = max_workers
-
-    def _process_section(self, section, book_id: str) -> int:
-        chunks = self.chunker.chunk_section(
-            section_id=section.id,
+section_id=section.id,
             book_id=book_id,
             path_id=section.path_id,
             text=section.raw_text,
