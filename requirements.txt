@@ -1,22 +1,30 @@
+# Core API & Config
 fastapi
 pydantic-settings
-langchain-community
-langchain-core
-langchain-text-splitters
-unstructured
-pypdf
-pymupdf
 python-dotenv
 httpx
-sqlalchemy
-pandas
-pytest
+anyio
+
+# Database & ORM (Spring-Boot style)
+sqlmodel>=0.0.14
+sqlalchemy>=2.0.0
 lancedb
+pandas
+aiomysql
+greenlet
+
+# AI & LLM
 openai
 litellm==1.82.6
-anyio
-pytest-asyncio
-pytest-tornasync
-pytest-trio
-pytest-twisted
+langchain-core
+langchain-community
+langchain-text-splitters
 
+# Document Processing
+unstructured[all-docs]
+pypdf
+pymupdf>=1.23.0
+
+# Testing (Simplified for 3.12)
+pytest
+pytest-asyncio

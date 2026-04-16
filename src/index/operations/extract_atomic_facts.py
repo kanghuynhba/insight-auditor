@@ -48,6 +48,7 @@ def extract_atomic_facts(
             section_id=section_id,
             path_id=path_id,
             point=raw_fact.get("point", ""),
+            questions=raw_fact.get("questions", []),
             rank=raw_fact.get("rank"),
             reason=raw_fact.get("reason", ""),
         )

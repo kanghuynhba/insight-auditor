@@ -1,67 +1,25 @@
-# src/core/models.py
-
 from datetime import datetime
 from pathlib import Path
-from typing import Any, List, Optional, Union
+from typing import List, Optional
 
-from pydantic import BaseModel, Field, field_validator, model_validator
-from src.core.helpers import new_id, now
+from pydantic import ConfigDict, field_validator, model_validator
+from sqlalchemy import TEXT, Column, ForeignKey
+from sqlalchemy.dialects.mysql import MEDIUMTEXT
+from sqlmodel import Field, Relationship
+from src.core.entity import Entity
 from src.infrastructure.loaders.file_type import FileType
 
 
-class Section(BaseModel):
-    id: str = Field(default_factory=new_id)
-    chapter_id: str
-    path_id: str
-    parent_path_id: Optional[str] = None
-    title: str
-    raw_text: str
-    atomic_facts: List[Any] = Field(
-        default_factory=list
-    )  # Replace 'any' with AtomicFact
-    level: int
-    word_count: int = 0
-
-    @model_validator(mode="after")
-    def compute_word_count(self) -> "Section":
-        if self.word_count == 0 and self.raw_text:
-            count = len(self.raw_text.split())
-            # object.__setattr__ is the correct way to bypass the 'frozen' restriction
-            object.__setattr__(self, "word_count", count)
-        return self
-
-    model_config = {"frozen": True}
-
-
-class Chapter(BaseModel):
-    id: str = Field(default_factory=new_id)
-    book_id: str
-    title: str
-    path_id: str
-    index: int
-    sections: List[Section] = Field(default_factory=list)
-    structural_map: Optional[str] = None
-
-    @field_validator("index")
-    @classmethod
-    def index_non_negative(cls, v: int) -> int:
-        if v < 0:
-            raise ValueError("Chapter index must be >= 0")
-        return v
-
-    model_config = {"frozen": True}
-
-
-class Book(BaseModel):
-    id: str = Field(default_factory=new_id)
-    title: str
+class Book(Entity, table=True):
+    __tablename__ = "books"
+    title: str = Field(index=True)
     author: Optional[str] = None
     source_format: FileType
-    file_path: Path
+    file_path: str
     source_filename: str
     total_chapters: int = 0
-    chapters: List[Chapter] = Field(default_factory=list)
-    ingested_at: datetime = Field(default_factory=now)
+
+    chapters: List["Chapter"] = Relationship(back_populates="book")
 
     @field_validator("title")
     @classmethod
@@ -71,13 +29,49 @@ class Book(BaseModel):
         return v.strip()
 
     @property
-    def all_sections(self) -> List[Section]:
-        """Flattens the chapter-section hierarchy"""
+    def all_sections(self) -> List["Section"]:
         return [sec for ch in self.chapters for sec in ch.sections]
 
-    model_config = {"frozen": True}
+
+class Chapter(Entity, table=True):
+    __tablename__ = "chapters"
+    title: str
+    path_id: str = Field(index=True)
+    index: int = Field(default=0)
+    structural_map: Optional[str] = None
+
+    book_id: str = Field(sa_column=Column(ForeignKey("books.id"), index=True))
+    book: Optional["Book"] = Relationship(back_populates="chapters")
+    sections: List["Section"] = Relationship(back_populates="chapter")
+
+    @field_validator("index")
+    @classmethod
+    def index_non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("Chapter index must be >= 0")
+        return v
 
 
-Section.model_rebuild()
-Chapter.model_rebuild()
-Book.model_rebuild()
+class Section(Entity, table=True):
+    __tablename__ = "sections"
+    path_id: str = Field(index=True)
+    parent_path_id: Optional[str] = None
+    title: str
+    level: int
+
+    # Relationships
+    chapter_id: str = Field(sa_column=Column(ForeignKey("chapters.id"), index=True))
+    chapter: Optional["Chapter"] = Relationship(back_populates="sections")
+
+    atomic_facts: List["AtomicFact"] = Relationship(back_populates="section")
+
+    raw_text: Optional[str] = Field(
+        default=None, sa_column=Column(MEDIUMTEXT, nullable=True)
+    )
+    word_count: int = Field(default=0)  # MariaDB is happy because there is a default
+
+    @property
+    def word_count(self) -> int:
+        if not self.raw_text:
+            return 0
+        return len(self.raw_text.split())

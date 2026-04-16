@@ -1,33 +1,46 @@
-# src/core/atomic_fact.py
+import json
+from typing import TYPE_CHECKING, Any, List, Optional
 
-from enum import IntEnum
-from typing import Union
-
-from pydantic import BaseModel, Field, field_validator
+from pydantic import ConfigDict, ValidationError, field_validator
+from sqlalchemy import JSON, TEXT
+from sqlmodel import Column, Field, Relationship
+from src.core.entity import Entity
 from src.core.enums import Tier
-from src.core.helpers import new_id
+
+if TYPE_CHECKING:
+    from src.core.models import Section
 
 TIER_WEIGHTS = {Tier.CRITICAL: 3, Tier.IMPORTANT: 2, Tier.NUANCE: 1}
 
 
-class AtomicFact(BaseModel):
-    id: str = Field(default_factory=new_id)
-    section_id: str
-    path_id: str
-    point: str
-    rank: Tier
-    reason: str
+class AtomicFact(Entity, table=True):
+    __tablename__ = "atomic_facts"
+    section_id: str = Field(foreign_key="sections.id", index=True)
+    path_id: str = Field(index=True)
+
+    point: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
+    reason: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
+
+    rank: Tier = Field(default=Tier.NUANCE, index=True)
+
+    # Metadata
+    questions: List[str] = Field(default_factory=list, sa_column=Column(JSON))
+
+    # Relationships
+    section: "Section" = Relationship(back_populates="atomic_facts")
 
     @property
     def weight(self) -> int:
-        return TIER_WEIGHTS[self.rank]
+        """Returns weight based on Tier: Critical=3, Important=2, Nuance=1"""
+        return TIER_WEIGHTS.get(self.rank, 0)
 
     @field_validator("rank", mode="before")
     @classmethod
-    def coerce_rank(cls, v: Union[int, str, "Tier", None]) -> "Tier":
-        """Automatically convert integer/string ranks to Tier enum."""
-        if isinstance(v, Tier):
-            return v
+    def coerce_rank(cls, v: Any) -> Any:
+        """
+        Only coerce if a value exists.
+        Returning None allows Pydantic to trigger the required field error.
+        """
         return Tier.from_rank(v)
 
-    model_config = {"frozen": True}
+    model_config = ConfigDict(validate_assignment=True)

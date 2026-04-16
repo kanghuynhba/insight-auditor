@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Tuple
 
 import fitz
 from src.core.config import Settings
+from src.core.entity import Entity
 from src.core.helpers import new_id
 from src.core.models import Book, Chapter, Section
 
@@ -56,19 +57,19 @@ class PdfLoader(Loader):
             title = self._detect_title(doc, path)
             raw_entries = self._extract_entries(doc)
 
-        book_id = new_id()
-        chapters = self._build_chapters(raw_entries, book_id)
+        book = Entity()
+        chapters = self._build_chapters(raw_entries, book.id)
 
         # Instantiate the frozen Book model
-        return Book(
-            id=book_id,
+        book = Book(
             title=title,
             source_format=FileType.Pdf,
-            file_path=path,
+            file_path=str(path),
             source_filename=path.name,
             total_chapters=len(chapters),
             chapters=chapters,
         )
+        return book
 
     def _extract_entries(self, doc: fitz.Document) -> List[_RawEntry]:
         """
@@ -177,6 +178,7 @@ class PdfLoader(Loader):
                     title=entry.title,
                     path_id=path_id,
                     index=entry.index,
+                    sections=[],
                 )
                 chapters.append(active_chapter)
             else:

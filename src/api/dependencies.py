@@ -1,13 +1,13 @@
 # src/api/dependencies.py
+from src.core.config import get_settings
+from src.infrastructure.adapters.mariadb.database_context import DatabaseContext
 
-from fastapi import Depends
+settings = get_settings()
 
-from src.services.storage import StorageService
-from src.services.ingestion import IngestionService
+# Unified Relational Context
+_db_context = DatabaseContext(str(settings.mariadb_url))
 
-def get_storage_svc() -> StorageService:
-    return StorageService()
 
-def get_ingestion_svc():
-    return IngestionService()
-
+def get_db_context() -> DatabaseContext:
+    """Dependency provider for the MariaDB unit of work."""
+    return _db_context

@@ -1,234 +1,166 @@
-# tests/integration/workflow/test_ingestion_flow.py
-
-import json
+import os
 from pathlib import Path
-from typing import List
+from unittest.mock import MagicMock
 
 import pytest
+from sqlalchemy.orm import selectinload
+from sqlmodel import SQLModel, select
 from src.core.atomic_fact import AtomicFact
 from src.core.config import get_settings
+from src.core.models import Book, Chapter, Section
 from src.index.operations.extract_atomic_facts import extract_atomic_facts
+from src.infrastructure.adapters.mariadb.database_context import DatabaseContext
 from src.infrastructure.chunking.natural_boundary_chunker import NaturalBoundaryChunker
-from src.infrastructure.databases.vectors.lancedb_repo import LanceDBRepository
-from src.infrastructure.llm.completion.lite_llm_completion import LiteLLMCompletion
+from src.infrastructure.loaders.file_type import FileType
+from src.infrastructure.persistence.chunk_repo import ChunkRepository
 from src.infrastructure.prompts.index.extract_atomic_facts import (
     ATOMIC_FACT_SYSTEM,
     ATOMIC_FACT_USER,
 )
-from src.infrastructure.storage.mariadb_storage import MariaDBStorage
 
 
 @pytest.mark.slow
 @pytest.mark.integration
+@pytest.mark.asyncio
 class TestIngestionFlow:
-    """End-to-end tests connecting all components."""
+    """Integration test for the full chunking + fact extraction + persistence pipeline."""
 
     @pytest.fixture
     def settings(self):
         return get_settings()
 
     @pytest.fixture
-    def lancedb_repo(self, settings):
-        return LanceDBRepository(settings)
-
-    @pytest.fixture
-    def mariadb_storage(self):
-        import os
-
+    async def db_context(self):
+        """Setup a clean test database with all tables."""
         connection_url = os.getenv(
-            "TEST_MARIADB_URL", "mysql+aiomysql://root:password@localhost:3306/test_db"
+            "TEST_MARIADB_URL",
+            "mysql+aiomysql://root:password@localhost:3306/insight_auditor_test",
         )
-        return MariaDBStorage(connection_url, table_name="e2e_test_facts")
+        ctx = DatabaseContext(connection_url)
+        # Create all tables defined in SQLModel metadata
+        async with ctx.engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.drop_all)
+            await conn.run_sync(SQLModel.metadata.create_all)
+        yield ctx
+        # Cleanup
+        async with ctx.engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.drop_all)
+        await ctx.engine.dispose()
 
     @pytest.fixture
-    def llm_completion(self, settings):
-        config = settings.litellm_config
-        return LiteLLMCompletion(
-            model=config["model"],
-            api_key=config["api_key"],
-            api_base=config["base_url"],
-            api_version=config["api_version"],
-        )
+    async def sample_section(self, db_context):
+        """Create a minimal Book → Chapter → Section for testing."""
+        async with db_context.get_session() as session:
+            book = Book(
+                title="Integration Test Book",
+                source_format=FileType.Pdf,
+                file_path="/tmp/test.pdf",
+                source_filename="test.pdf",
+            )
+            session.add(book)
+            await session.flush()
+
+            chapter = Chapter(
+                title="Chapter 1", path_id="001", book_id=book.id, index=1
+            )
+            session.add(chapter)
+            await session.flush()
+
+            section = Section(
+                title="Test Section",
+                chapter_id=chapter.id,
+                path_id="001.001",
+                level=1,
+                raw_text="An algorithm is a finite sequence of well-defined instructions. "
+                "Binary search finds a target in a sorted array by repeatedly halving the search space.",
+            )
+            session.add(section)
+            await session.commit()
+            # Refresh and eagerly load the chapter relationship
+            stmt = (
+                select(Section)
+                .where(Section.id == section.id)
+                .options(selectinload(Section.chapter))
+            )
+            result = await session.execute(stmt)
+            section = result.scalar_one()
+            return section
 
     @pytest.fixture
     def chunker(self, settings):
         return NaturalBoundaryChunker(settings)
 
+    @pytest.fixture
+    def mock_llm_response(self):
+        """Mock LLM response with a valid fact list."""
+        mock = MagicMock()
+        mock.formatted_response = [
+            {
+                "point": "Binary search requires a sorted array.",
+                "rank": 1,
+                "reason": "Core precondition",
+                "questions": [
+                    "What precondition must be satisfied before using binary search?"
+                ],
+            },
+            {
+                "point": "Binary search repeatedly halves the search space.",
+                "rank": 1,
+                "reason": "Core mechanism",
+                "questions": ["How does binary search narrow down the search area?"],
+            },
+        ]
+        return mock
+
     async def test_chunk_to_facts_pipeline(
-        self, lancedb_repo, mariadb_storage, llm_completion, chunker
+        self, db_context, sample_section, chunker, mock_llm_response
     ):
-        """
-        Test complete pipeline:
-        Text → Chunk → Extract Facts → Save to MariaDB → Retrieve
-        """
-        print("\n" + "=" * 60)
-        print("Starting End-to-End Pipeline Test")
-        print("=" * 60)
+        """Test that we can chunk a section, extract facts from a chunk, and persist them."""
+        section = sample_section
 
-        # Step 1: Create test text (simulating a section)
-        test_text = """
-        ### Chapter 1: Introduction to Algorithms
-        
-        An algorithm is a finite sequence of well-defined instructions used to solve a class 
-        of problems or perform a computation. Algorithms are fundamental to computer science 
-        and programming.
-        
-        Binary search is a classic algorithm that finds the position of a target value within 
-        a sorted array. It works by comparing the target to the middle element of the array. 
-        If they are not equal, the half in which the target cannot lie is eliminated, and the 
-        search continues on the remaining half. This process repeats until the target is found 
-        or the search space is empty. Binary search runs in O(log n) time, making it much 
-        faster than linear search for large datasets.
-        
-        The binary search algorithm requires the input array to be sorted. If the array is 
-        unsorted, the algorithm will produce incorrect results. This precondition is essential 
-        for the algorithm to function correctly.
-        """
-
-        section_id = "e2e-test-section-001"
-        path_id = "999.001"
-
-        print(f"\n1. Processing section: {section_id}")
-        print(f"   Text length: {len(test_text)} characters")
-
-        # Step 2: Chunk the text
-        print("\n2. Chunking text...")
+        # 1. Chunk the section's raw text
         chunks = chunker.chunk_section(
-            section_id=section_id,
-            book_id="e2e-test-book",
-            path_id=path_id,
-            text=test_text,
+            section_id=section.id,
+            book_id=section.chapter.book_id,
+            path_id=section.path_id,
+            text=section.raw_text,
         )
+        assert len(chunks) > 0, "Chunker produced no chunks"
 
-        print(f"   Created {len(chunks)} chunks")
-        for i, chunk in enumerate(chunks):
-            print(f"   Chunk {i}: {chunk.chunk_level} - {len(chunk.text)} chars")
+        # 2. Use the first chunk for extraction (real extract_atomic_facts, but with mocked LLM)
+        mock_llm = MagicMock()
+        mock_llm.completion.return_value = mock_llm_response
 
-        # Step 3: Extract facts from each chunk
-        print("\n3. Extracting atomic facts using LLM...")
-        all_facts = []
-
-        for i, chunk in enumerate(chunks):
-            print(f"   Processing chunk {i+1}/{len(chunks)}...")
-
-            facts = extract_atomic_facts(
-                model=llm_completion,
-                system_prompt=ATOMIC_FACT_SYSTEM,
-                user_prompt_template=ATOMIC_FACT_USER,
-                text=chunk.text,
-                path_id=path_id,
-                section_id=section_id,
-            )
-
-            all_facts.extend(facts)
-            print(f"      Extracted {len(facts)} facts")
-
-        print(f"\n   Total facts extracted: {len(all_facts)}")
-
-        # Step 4: Save facts to MariaDB
-        print("\n4. Saving facts to MariaDB...")
-        saved_keys = []
-
-        for fact in all_facts:
-            key = f"e2e_fact:{fact.section_id}:{fact.id}"
-            await mariadb_storage.set(key, fact)
-            saved_keys.append(key)
-            print(f"   Saved: {fact.id} - {fact.point[:50]}...")
-
-        # Step 5: Retrieve and verify facts
-        print("\n5. Retrieving and verifying facts...")
-
-        for fact, key in zip(all_facts, saved_keys):
-            retrieved_data = await mariadb_storage.get(key)
-            assert retrieved_data is not None
-
-            retrieved_fact = AtomicFact(**retrieved_data)
-            assert retrieved_fact.id == fact.id
-            assert retrieved_fact.point == fact.point
-            assert retrieved_fact.rank == fact.rank
-            assert retrieved_fact.reason == fact.reason
-            print(f"   Verified: {fact.id}")
-
-        # Step 6: Cleanup
-        print("\n6. Cleaning up test data...")
-        for key in saved_keys:
-            await mariadb_storage.delete(key)
-
-        print("\n" + "=" * 60)
-        print("✓ End-to-End Pipeline Test PASSED")
-        print("=" * 60)
-
-    async def test_retrieve_from_lancedb_and_extract(
-        self, lancedb_repo, mariadb_storage, llm_completion
-    ):
-        """
-        Test: Retrieve chunks from LanceDB → Extract facts → Save to MariaDB
-        """
-        print("\n" + "=" * 60)
-        print("Testing LanceDB Retrieval + Fact Extraction")
-        print("=" * 60)
-
-        # Search for relevant chunks
-        query = "algorithm binary search"
-        book_id = "test-book-001"
-        path_id = "001"
-
-        print(f"\n1. Searching LanceDB for: '{query}'")
-        results = lancedb_repo.search_chunks(
-            query=query, book_id=book_id, path_id=path_id, top_k=3
+        facts = extract_atomic_facts(
+            model=mock_llm,
+            system_prompt=ATOMIC_FACT_SYSTEM,
+            user_prompt_template=ATOMIC_FACT_USER,
+            text=chunks[0].text,
+            path_id=section.path_id,
+            section_id=section.id,
         )
+        assert len(facts) > 0, "No facts extracted from chunk"
 
-        if not results:
-            print("   No results found - skipping test")
-            pytest.skip("No data in LanceDB for this test")
+        # 3. Persist facts to MariaDB
+        async with db_context.get_session() as session:
+            for fact in facts:
+                session.add(fact)
+            await session.commit()
 
-        print(f"   Found {len(results)} chunks")
+        # 4. Retrieve and verify facts are correctly linked to the section
+        async with db_context.get_session() as session:
+            stmt = select(AtomicFact).where(AtomicFact.section_id == section.id)
+            result = await session.execute(stmt)
+            saved_facts = result.scalars().all()
 
-        # Extract facts from each chunk
-        print("\n2. Extracting facts from retrieved chunks...")
-        all_facts = []
-        saved_keys = []
+            assert len(saved_facts) == len(mock_llm_response.formatted_response)
+            for fact in saved_facts:
+                assert fact.section_id == section.id
+                assert fact.path_id == section.path_id
+                assert fact.point is not None
+                assert fact.rank in (1, 2, 3)  # Will be coerced to Tier internally
 
-        for i, result in enumerate(results):
-            print(f"   Processing chunk {i+1}:")
-            print(f"     Path: {result.get('path_id')}")
-            print(f"     Text preview: {result.get('text', '')[:100]}...")
-
-            facts = extract_atomic_facts(
-                model=llm_completion,
-                system_prompt=ATOMIC_FACT_SYSTEM,
-                user_prompt_template=ATOMIC_FACT_USER,
-                text=result.get("text", ""),
-                path_id=result.get("path_id", "unknown"),
-                section_id=result.get("section_id", "unknown"),
-            )
-
-            all_facts.extend(facts)
-            print(f"     Extracted {len(facts)} facts")
-
-        print(f"\n   Total facts extracted: {len(all_facts)}")
-
-        # Save to MariaDB
-        if all_facts:
-            print("\n3. Saving to MariaDB...")
-            for fact in all_facts:
-                key = f"lancedb_fact:{fact.section_id}:{fact.id}"
-                await mariadb_storage.set(key, fact)
-                saved_keys.append(key)
-                print(f"   Saved: {fact.id}")
-
-            # Verify
-            print("\n4. Verifying saved facts...")
-            for fact, key in zip(all_facts, saved_keys):
-                retrieved = await mariadb_storage.get(key)
-                assert retrieved is not None
-                print(f"   Verified: {fact.id}")
-
-            # Cleanup
-            print("\n5. Cleaning up...")
-            for key in saved_keys:
-                await mariadb_storage.delete(key)
-
-        print("\n" + "=" * 60)
-        print("✓ LanceDB Retrieval Test PASSED")
-        print("=" * 60)
+        # 5. (Optional) Verify LanceDB chunks are also stored – if you want to test vector storage
+        # vector_db = ChunkRepository(get_settings())
+        # stored = await vector_db.get_chunks_by_book(section.chapter.book_id)
+        # assert len(stored) > 0

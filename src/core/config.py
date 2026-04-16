@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     registry_name: str
     api_type: str
 
+    # MariaDB / SQL Configuration
+    # Example: mysql+aiomysql://user:password@localhost:3306/insight_auditor
+    mariadb_url: str = "mysql+aiomysql://root:password@localhost:3306/insight_auditor"
+
     # Storage path
     lance_db_path: Path = Path("./lancedb")
     uploads_dir: Path = Path("./uploads")
@@ -44,6 +48,16 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
+
+    @field_validator("mariadb_url")
+    @classmethod
+    def validate_mariadb_url(cls, v: str) -> str:
+        """Ensures the async driver is specified for MariaDB."""
+        if not v.startswith("mysql+aiomysql://"):
+            raise ValueError(
+                "mariadb_url must use the 'mysql+aiomysql://' scheme for async support."
+            )
+        return v
 
     @field_validator("azure_openai_endpoint", mode="before")
     @classmethod

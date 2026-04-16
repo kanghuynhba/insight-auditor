@@ -1,3 +1,4 @@
+# src/infrastructure/persistence/chunk_repo.py
 import threading
 import time
 from typing import Any
@@ -7,9 +8,8 @@ from lancedb.pydantic import LanceModel, Vector
 from lancedb.table import LanceTable
 from openai import AzureOpenAI, RateLimitError
 from src.core.config import Settings
+from src.infrastructure.adapters.vectors.vector_store import VectorStore
 from src.infrastructure.chunking.text_chunk import TextChunk
-
-from .vector_store import VectorStore
 
 
 class ChunkSchema(LanceModel):
@@ -27,7 +27,7 @@ class ChunkSchema(LanceModel):
     context_text: str | None
 
 
-class LanceDBRepository(VectorStore):
+class ChunkRepository(VectorStore):
     def __init__(self, settings: Settings):
         self._openai = AzureOpenAI(
             api_key=settings.azure_openai_api_key.get_secret_value(),
@@ -101,12 +101,12 @@ class LanceDBRepository(VectorStore):
         import asyncio
 
         def _sync_query():
-            dummy = [0.0] * 1536
-            return (
-                self._table.search(dummy)
-                .where(f"book_id = '{book_id}'", prefilter=True)
-                .limit(100000)
-                .to_list()
-            )
+            # This bypasses vector search entirely.
+            df = self._table.to_pandas()
+            # Filter rows where book_id matches
+            filtered_df = df[df["book_id"] == book_id]
+
+            # Convert back to list of dicts
+            return filtered_df.to_dict(orient="records")
 
         return await asyncio.to_thread(_sync_query)

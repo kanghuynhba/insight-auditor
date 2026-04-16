@@ -1,7 +1,6 @@
-"""Base classes for vector stores."""
-
+# src/infrastructure/adapters/vectors/vector_store.py
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, List
 
 from src.infrastructure.chunking.text_chunk import TextChunk
 
@@ -18,7 +17,15 @@ class VectorStore(ABC):
     def search_chunks(
         self, query: str, book_id: str, path_id: str, top_k: int = 5
     ) -> list[dict[str, Any]]:
-        """Performs semantic search against chunks, filtered by book and section."""
+        """Performs semantic search against chunks."""
+        pass
+
+    @abstractmethod
+    async def get_chunks_by_book(self, book_id: str) -> List[dict[str, Any]]:
+        """
+        NEW: Mandatory method for all vector providers.
+        Retrieves all chunks belonging to a given book.
+        """
         pass
 
     @abstractmethod

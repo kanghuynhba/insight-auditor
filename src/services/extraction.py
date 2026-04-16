@@ -1,105 +1,129 @@
 # src/services/extraction.py
 import asyncio
 import logging
-import re
-from typing import List
+from typing import Dict, List, Set
 
 from src.core.atomic_fact import AtomicFact
+from src.core.models import Section
 from src.index.operations.extract_atomic_facts import extract_atomic_facts
-from src.infrastructure.databases.vectors.lancedb_repo import LanceDBRepository
-from src.infrastructure.llm.completion.lite_llm_completion import LiteLLMCompletion
+from src.infrastructure.adapters.mariadb.database_context import DatabaseContext
+from src.infrastructure.llm.completion.completion import LLMCompletion
 from src.infrastructure.prompts.index.extract_atomic_facts import (
     ATOMIC_FACT_SYSTEM,
     ATOMIC_FACT_USER,
 )
-from src.infrastructure.storage.mariadb_storage import MariaDBStorage
 
 logger = logging.getLogger(__name__)
 
 
 class ExtractionService:
-    """Service to extract atomic facts from chunks stored in LanceDB."""
-
     def __init__(
         self,
-        llm: LiteLLMCompletion,
-        vector_db: LanceDBRepository,
-        fact_storage: MariaDBStorage,
-        concurrency: int = 8,
+        llm: LLMCompletion,  # ← abstract type, not the concrete LiteLLMCompletion
+        db_context: DatabaseContext,
+        concurrency: int = 5,
     ):
         self.llm = llm
-        self.vector_db = vector_db
-        self.fact_storage = fact_storage
-        self.concurrency = concurrency
+        self.db_context = db_context
+        self.semaphore = asyncio.Semaphore(concurrency)
+        self._section_locks: Dict[str, asyncio.Lock] = {}
+        self._processed_sections: Set[str] = set()
+
+    # ------------------------------------------------------------------ #
+    #  Public API                                                          #
+    # ------------------------------------------------------------------ #
 
     async def extract_facts_for_book(self, book_id: str) -> List[AtomicFact]:
         """
-        Extract atomic facts from all chunks belonging to a book.
-        Returns a list of all extracted AtomicFact objects.
+        Fetches all Sections for a book from MariaDB and concurrently
+        extracts AtomicFacts for each one that hasn't been processed yet.
         """
-        logger.info(f"Fetching chunks for book {book_id}")
-        chunks = await self.vector_db.get_chunks_by_book(book_id)
-        logger.info(f"Found {len(chunks)} chunks to process")
+        logger.info(f"Starting extraction for book: {book_id}")
 
-        semaphore = asyncio.Semaphore(self.concurrency)
+        sections = await self._fetch_sections(book_id)
+        if not sections:
+            logger.warning(f"No sections found for book {book_id}.")
+            return []
 
-        async def process_chunk(chunk: dict):
-            async with semaphore:
-                chunk_id = chunk["id"]
-                # Skip if this chunk was already processed
-                if await self._is_chunk_processed(chunk_id):
-                    logger.debug(f"Chunk {chunk_id} already processed, skipping")
+        tasks = [self._process_section(section) for section in sections]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        return self._aggregate(results)
+
+    # ------------------------------------------------------------------ #
+    #  Private helpers                                                     #
+    # ------------------------------------------------------------------ #
+
+    async def _fetch_sections(self, book_id: str) -> List[Section]:
+        async with self.db_context.get_session() as session:
+            repo = self.db_context.get_repository(session, Section)
+            return await repo.find_by_book(book_id)
+
+    async def _process_section(self, section: Section) -> List[AtomicFact]:
+        """
+        Idempotent per-section worker:
+          1. Fast in-memory check
+          2. Per-section lock (prevents duplicate LLM calls under concurrency)
+          3. DB check (persistence layer dedup)
+          4. LLM extraction + save
+        """
+        if section.id in self._processed_sections:
+            return []
+
+        lock = self._section_locks.setdefault(section.id, asyncio.Lock())
+
+        async with lock:
+            # Re-check after acquiring lock (another coroutine may have finished first)
+            if section.id in self._processed_sections:
+                return []
+
+            async with self.db_context.get_session() as session:
+                fact_repo = self.db_context.get_repository(session, AtomicFact)
+
+                existing = await fact_repo.find_by_section(section.id)
+                if existing:
+                    self._processed_sections.add(section.id)
+                    return existing
+
+                if not section.raw_text:
+                    logger.warning(f"Section {section.id} has no raw_text — skipping.")
                     return []
 
-                logger.debug(f"Extracting facts from chunk {chunk_id}")
-                # Run the synchronous LLM call in a thread
-                facts = await asyncio.to_thread(
-                    extract_atomic_facts,
-                    self.llm,
-                    ATOMIC_FACT_SYSTEM,
-                    ATOMIC_FACT_USER,
-                    chunk["text"],
-                    chunk["path_id"],
-                    chunk["section_id"],
-                )
-                # Store each fact
-                for fact in facts:
-                    key = f"fact:{fact.section_id}:{fact.id}"
-                    await self.fact_storage.set(key, fact)
-                # Mark chunk as processed
-                await self._mark_chunk_processed(chunk_id)
-                logger.info(f"Chunk {chunk_id}: extracted {len(facts)} facts")
+                facts = await self._extract_and_save(session, fact_repo, section)
+                self._processed_sections.add(section.id)
                 return facts
 
-        # Process all chunks concurrently with semaphore
-        tasks = [process_chunk(chunk) for chunk in chunks]
-        results = await asyncio.gather(*tasks)
-        all_facts = [fact for facts in results for fact in facts]
-        all_facts = self._deduplicate_facts(all_facts)
-        logger.info(f"Total facts extracted: {len(all_facts)}")
-        return all_facts
+    async def _extract_and_save(
+        self, session, fact_repo, section: Section
+    ) -> List[AtomicFact]:
+        """Calls the LLM (off the event loop) and persists the resulting facts."""
+        async with self.semaphore:
+            logger.debug(f"LLM extraction for section: {section.path_id}")
 
-    async def _is_chunk_processed(self, chunk_id: str) -> bool:
-        """Check if a chunk has already been processed."""
-        key = f"processed_chunk:{chunk_id}"
-        return await self.fact_storage.get(key) is not None
+            # extract_atomic_facts is sync → run in a thread to avoid blocking
+            facts: List[AtomicFact] = await asyncio.to_thread(
+                extract_atomic_facts,
+                self.llm,
+                ATOMIC_FACT_SYSTEM,
+                ATOMIC_FACT_USER,
+                section.raw_text,
+                section.path_id,
+                section.id,
+            )
 
-    async def _mark_chunk_processed(self, chunk_id: str) -> None:
-        """Mark a chunk as processed."""
-        key = f"processed_chunk:{chunk_id}"
-        await self.fact_storage.set(key, "done")
-
-    def _deduplicate_facts(self, facts: list[AtomicFact]) -> list[AtomicFact]:
-        """Remove near-duplicate facts by normalizing and comparing point text."""
-        seen = set()
-        unique = []
         for fact in facts:
-            # Normalize: lowercase, strip punctuation, collapse whitespace
-            key = re.sub(r"[^a-z0-9 ]", "", fact.point.lower())
-            key = re.sub(r"\s+", " ", key).strip()
-            # Use first 80 characters as fingerprint (catches paraphrases)
-            fingerprint = key[:80]
-            if fingerprint not in seen:
-                seen.add(fingerprint)
-                unique.append(fact)
-        return unique
+            await fact_repo.save(fact)
+
+        await session.commit()
+        logger.info(f"Section {section.path_id}: saved {len(facts)} facts.")
+        return facts
+
+    @staticmethod
+    def _aggregate(results: list) -> List[AtomicFact]:
+        all_facts: List[AtomicFact] = []
+        for result in results:
+            if isinstance(result, Exception):
+                logger.error(f"Section failed: {result}", exc_info=result)
+            elif result:
+                all_facts.extend(result)
+        return all_facts

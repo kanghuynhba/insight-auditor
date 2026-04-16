@@ -49,31 +49,45 @@ class NaturalBoundaryChunker(Chunker):
 
         overlapped = self._build_overlapped_texts(raw_chunks)
         context_windows = self._build_context_windows(overlapped)
-
-        current_start = 0
         chunks = []
+        current_char_offset = 0
 
-        for i, chunk_text in enumerate(overlapped):
-            start_idx = text.find(chunk_text, current_start)
-            if start_idx == -1:
-                start_idx = current_start
-            end_idx = start_idx + len(chunk_text)
-            current_start = end_idx
+        for i, sentence_list in enumerate(raw_chunks):
+            # The 'body' is the unique part of this chunk
+            body_text = self._join(sentence_list)
+
+            # The 'tail' is the overlap from the previous chunk
+            overlap_text = ""
+            if i > 0 and self._overlap_budget:
+                overlap_text = self._build_overlap_tail(raw_chunks[i - 1])
+
+            # Full text includes overlap for context, but we track offset via body_text
+            full_chunk_text = (
+                f"{overlap_text} {body_text}" if overlap_text else body_text
+            )
+
+            start_idx = current_char_offset
+            # If there was overlap, the actual start_char is slightly behind
+            # but for indexing, we usually map to the start of the 'body'
+            end_idx = start_idx + len(body_text)
+
             chunks.append(
                 TextChunk(
                     id=str(uuid4()),
                     book_id=book_id,
                     section_id=section_id,
                     path_id=path_id,
-                    text=overlapped[i],
+                    text=full_chunk_text,
                     start_char=start_idx,
                     end_char=end_idx,
-                    context_text=context_windows[i],
                     chunk_index=i,
                     chunk_level=self._detect_level(overlapped[i]),
                     word_count=len(overlapped[i].split()),
+                    context_text=context_windows[i],
                 )
             )
+            # Increment offset by the length of the unique body text (plus space if needed)
+            current_char_offset = end_idx + 1
 
         return chunks
 

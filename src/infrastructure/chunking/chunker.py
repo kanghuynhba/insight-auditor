@@ -1,4 +1,4 @@
-# infrastructure/chunking/chunker.py
+#: AsyncSession infrastructure/chunking/chunker.py
 from abc import ABC, abstractmethod
 from typing import Any
 

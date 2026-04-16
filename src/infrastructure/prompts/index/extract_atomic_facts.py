@@ -1,18 +1,10 @@
 # src/infrastructure/prompts/index/extract_atomic_facts.py
 
-# ATOMIC FACT EXTRACTION
-
-# Used by: AzureOpenAIClient.generate_atomic_facts()
-# Input:   full reconstructed section text + its path_id
-# Output:  raw JSON array — no preamble, no markdown fences
-
-# TODO: The prompt only works for technical books
-
 ATOMIC_FACT_SYSTEM = (
     "You are an expert knowledge extraction engine for technical books. "
     "Extract discrete, atomic knowledge claims from the provided text. "
-    "For each claim, assign a Criticality Rank (1-3) and output ONLY a valid "
-    "JSON array. No preamble, no markdown fences."
+    "For each claim, assign a Criticality Rank (1-3) and pair it with a "
+    "list of Socratic recall questions. Output ONLY a valid JSON array. No preamble, no markdown fences."
 )
 
 ATOMIC_FACT_USER = """\
@@ -20,7 +12,8 @@ ATOMIC_FACT_USER = """\
 Extract the most important atomic knowledge claims from the section text below.
 Return AT MOST 8 facts total. Prefer quality over quantity — omit anything that is
 already implied by a higher-ranked fact or that a competent reader would infer.
-For each claim assign a Criticality Rank and return ONLY a valid JSON array.
+For each claim assign a Criticality Rank and a list of paired recall questions.
+Return ONLY a valid JSON array.
 
 -Budget-
 Rank 1 (CRITICAL):  2–3 facts maximum. Only foundational logic and core definitions.
@@ -29,13 +22,20 @@ Rank 3 (NUANCE):    1–2 facts maximum. Only if genuinely non-obvious.
 
 -Ranking Rules-
 Rank 1 (CRITICAL)  — Foundational logic, core definitions, primary mechanisms.
-                     If a reader misses this, the rest of the section is incoherent.
+                      If a reader misses this, the rest of the section is incoherent.
 Rank 2 (IMPORTANT) — Technical precision: specific numbers, thresholds,
-                     contraindications, named rules, or legal/formal boundaries.
-                     Essential for applied or professional understanding.
+                      contraindications, named rules, or legal/formal boundaries.
+                      Essential for applied or professional understanding.
 Rank 3 (NUANCE)    — Supporting detail: examples, historical context,
-                     secondary analogies. Demonstrates mastery but not vital
-                     for basic competency.
+                      secondary analogies. Demonstrates mastery but not vital
+                      for basic competency.
+
+-Question Rules-
+  • Generate 1–2 questions per fact — they must probe exactly that fact, nothing broader.
+  • Open-ended only ("How…", "What…", "Under what conditions…"). No yes/no questions.
+  • Do not quote or closely paraphrase the source text inside the question.
+  • The questions must be self-contained — answerable without re-reading the section.
+  • Never embed the answer or hint at it inside the questions.
 
 -Exclusions-
 Exclude filler phrases, transitional sentences with no standalone knowledge value,
@@ -43,7 +43,7 @@ duplicate claims, and hyper-specific minutiae unlikely to appear in any reasonab
 
 -Output Schema-
 Each element of the JSON array must follow this exact shape:
-{{"point": "...", "rank": 1, "reason": "..."}}
+{{"point": "...", "rank": 1, "reason": "...", "questions": ["Primary question?", "Alternative question?"]}}
 
 ######################
 -Examples-
@@ -61,10 +61,10 @@ similar technique in 1946, though the first bug-free published version appeared 
 ######################
 Output:
 [
-  {{"point": "Binary search requires the input array to be sorted before it can be applied.", "rank": 1, "reason": "Core precondition — the algorithm produces incorrect results on unsorted input."}},
-  {{"point": "Binary search works by repeatedly halving the search space and discarding the half that cannot contain the target.", "rank": 1, "reason": "Primary mechanism — understanding this is required for the rest of the algorithm to make sense."}},
-  {{"point": "Binary search runs in O(log n) time.", "rank": 2, "reason": "Precision threshold — the specific complexity distinguishes it from O(n) linear search."}},
-  {{"point": "The first bug-free published version of binary search appeared in 1962, despite the concept being described by Mauchly in 1946.", "rank": 3, "reason": "Historical nuance — useful context but not required for algorithmic competency."}}
+  {{"point": "Binary search requires the input array to be sorted before it can be applied.", "rank": 1, "reason": "Core precondition — the algorithm produces incorrect results on unsorted input.", "questions": ["What precondition must the input satisfy before binary search can be applied?", "What is the consequence of attempting binary search on an unsorted dataset?"]}},
+  {{"point": "Binary search works by repeatedly halving the search space and discarding the half that cannot contain the target.", "rank": 1, "reason": "Primary mechanism — understanding this is required for the rest of the algorithm to make sense.", "questions": ["How does binary search progressively narrow down its search space?", "What logic allows the algorithm to safely discard half of the remaining elements at each step?"]}},
+  {{"point": "Binary search runs in O(log n) time.", "rank": 2, "reason": "Precision threshold — the specific complexity distinguishes it from O(n) linear search.", "questions": ["How does the time complexity of binary search compare to linear search?", "Why is binary search preferred for exceptionally large datasets?"]}},
+  {{"point": "The first bug-free published version of binary search appeared in 1962, despite the concept being described by Mauchly in 1946.", "rank": 3, "reason": "Historical nuance — useful context but not required for algorithmic competency.", "questions": ["What does the publication history of binary search reveal about the gap between describing an algorithm and implementing it correctly?"]}}
 ]
 
 ######################
@@ -82,9 +82,9 @@ latency-sensitive applications like video streaming.
 ######################
 Output:
 [
-  {{"point": "The TCP three-way handshake (SYN → SYN-ACK → ACK) must complete before any application data is exchanged.", "rank": 1, "reason": "Core mechanism — the entire concept of TCP connection establishment depends on this sequence."}},
-  {{"point": "TCP guarantees delivery and ordering of segments; UDP does not.", "rank": 2, "reason": "Critical distinction — this formal difference determines protocol selection in practice."}},
-  {{"point": "UDP is preferable over TCP for latency-sensitive applications such as video streaming.", "rank": 3, "reason": "Applied nuance — a practical consequence of the TCP/UDP distinction, but secondary to understanding the protocols themselves."}}
+  {{"point": "The TCP three-way handshake (SYN → SYN-ACK → ACK) must complete before any application data is exchanged.", "rank": 1, "reason": "Core mechanism — the entire concept of TCP connection establishment depends on this sequence.", "questions": ["What sequence of steps must occur between two hosts before any application data can flow over a TCP connection?", "How does the handshake ensure both hosts are ready for transmission?"]}},
+  {{"point": "TCP guarantees delivery and ordering of segments; UDP does not.", "rank": 2, "reason": "Critical distinction — this formal difference determines protocol selection in practice.", "questions": ["How do TCP and UDP differ in their guarantees about data delivery and ordering?", "What fundamental trade-off does UDP make by not providing delivery guarantees?"]}},
+  {{"point": "UDP is preferable over TCP for latency-sensitive applications such as video streaming.", "rank": 3, "reason": "Applied nuance — a practical consequence of the TCP/UDP distinction, but secondary to understanding the protocols themselves.", "questions": ["Under what conditions would UDP be chosen over TCP?", "What makes UDP a better choice for real-time applications like video streaming compared to TCP?"]}}
 ]
 
 ######################

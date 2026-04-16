@@ -110,8 +110,17 @@ class LiteLLMCompletion(LLMCompletion):
         import json
 
         try:
-            # Clean up potential markdown fences
-            clean_content = content.strip().removeprefix("```json").removesuffix("```")
+            # More compatible way to strip markdown fences
+            clean_content = content.strip()
+            if clean_content.startswith("```json"):
+                clean_content = clean_content[7:]  # length of ```json
+            elif clean_content.startswith("```"):
+                clean_content = clean_content[3:]
+
+            if clean_content.endswith("```"):
+                clean_content = clean_content[:-3]
+
+            clean_content = clean_content.strip()
             data = json.loads(clean_content)
 
             # Check if response_format is a list (e.g., list[Dict[str, Any]])
