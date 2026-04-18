@@ -26,11 +26,10 @@ class Repository(Generic[T]):
         """Fetch all records for this entity type."""
         statement = select(self.entity_class)
         result = await self.session.exec(statement)
-        return list(result).all()
+        return list(result.all())
 
     async def delete(self, entity_id: Any) -> None:
         """Deletes an entity by its ID."""
         entity = await self.find_by_id(entity_id)
         if entity:
             await self.session.delete(entity)
-            await self.session.commit()

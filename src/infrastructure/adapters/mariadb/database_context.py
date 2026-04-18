@@ -1,8 +1,10 @@
 # src/infrastructure/adapters/mariadb/database_context.py
 
+from contextlib import asynccontextmanager
 from typing import Dict, Type, TypeVar
 
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 from src.core.atomic_fact import AtomicFact
 
@@ -35,9 +37,10 @@ class DatabaseContext:
             bind=self.engine, class_=AsyncSession, expire_on_commit=False
         )
 
-    def get_session(self) -> AsyncSession:
-        """Returns a session to be injected into Repositories."""
-        return self.session_factory()
+    @asynccontextmanager
+    async def get_session(self):
+        async with self.session_factory() as session:
+            yield session
 
     def get_repository(
         self, session: AsyncSession, entity_model: Type[T]
@@ -52,3 +55,8 @@ class DatabaseContext:
             if repo_class is not Repository
             else Repository(session, entity_model)
         )
+
+    async def initialize_database(self) -> None:
+        """Create all tables if they don't exist."""
+        async with self.engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.create_all)

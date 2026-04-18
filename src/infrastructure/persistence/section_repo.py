@@ -4,7 +4,7 @@ from typing import List
 
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
-from src.core.models import Section
+from src.core.models import Chapter, Section
 
 from .base_repository import Repository
 

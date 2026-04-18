@@ -11,7 +11,7 @@ from typing_extensions import TypedDict
 
 LLMCompletionMessagesParam = str | Sequence[ChatCompletionMessageParam | dict[str, Any]]
 
-ResponseFormat = TypeVar("ResponseFormat", bound=BaseModel)
+ResponseFormat = TypeVar("ResponseFormat", bound=object)
 
 
 class LLMCompletionResponse(BaseModel, Generic[ResponseFormat]):

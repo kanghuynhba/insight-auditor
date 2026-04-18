@@ -7,10 +7,10 @@ from typing import Dict
 # Domain Repositories and Persistence Adapters
 from src.core.models import Book, Chapter, Section
 from src.infrastructure.adapters.mariadb.database_context import DatabaseContext
-from src.infrastructure.adapters.vectors.vector_store import VectorStore
 from src.infrastructure.chunking.chunker import Chunker
 from src.infrastructure.loaders.file_type import FileType
 from src.infrastructure.loaders.loader import Loader
+from src.infrastructure.persistence.vector_base_repository import VectorRepository
 
 logger = logging.getLogger(__name__)
 
@@ -20,13 +20,13 @@ class IngestionService:
         self,
         chunker: Chunker,
         loaders: Dict[FileType, Loader],
-        vector_db: VectorStore,
+        vector_repo: VectorRepository,
         db_context: DatabaseContext,  # Injected for transactional unit of work
         max_workers: int = 8,
     ):
         self.loaders = loaders
         self.chunker = chunker
-        self.vector_db = vector_db
+        self.vector_repo = vector_repo
         self.db_context = db_context
         self.semaphore = asyncio.Semaphore(max_workers)
 
@@ -44,7 +44,7 @@ class IngestionService:
             )
             if chunks:
                 # Offload synchronous vector DB writes to a thread pool
-                await asyncio.to_thread(self.vector_db.save_chunks, chunks)
+                await asyncio.to_thread(self.vector_repo.save_chunks, chunks)
                 return len(chunks)
             return 0
 

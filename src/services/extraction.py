@@ -29,15 +29,15 @@ class ExtractionService:
         self._section_locks: Dict[str, asyncio.Lock] = {}
         self._processed_sections: Set[str] = set()
 
-    # ------------------------------------------------------------------ #
-    #  Public API                                                          #
-    # ------------------------------------------------------------------ #
-
     async def extract_facts_for_book(self, book_id: str) -> List[AtomicFact]:
         """
         Fetches all Sections for a book from MariaDB and concurrently
         extracts AtomicFacts for each one that hasn't been processed yet.
         """
+
+        self._processed_sections.clear()
+        self._section_locks.clear()
+
         logger.info(f"Starting extraction for book: {book_id}")
 
         sections = await self._fetch_sections(book_id)
@@ -49,10 +49,6 @@ class ExtractionService:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         return self._aggregate(results)
-
-    # ------------------------------------------------------------------ #
-    #  Private helpers                                                     #
-    # ------------------------------------------------------------------ #
 
     async def _fetch_sections(self, book_id: str) -> List[Section]:
         async with self.db_context.get_session() as session:
@@ -70,46 +66,49 @@ class ExtractionService:
         if section.id in self._processed_sections:
             return []
 
-        lock = self._section_locks.setdefault(section.id, asyncio.Lock())
+        async with self.semaphore:
+            lock = self._section_locks.setdefault(section.id, asyncio.Lock())
 
-        async with lock:
-            # Re-check after acquiring lock (another coroutine may have finished first)
-            if section.id in self._processed_sections:
-                return []
-
-            async with self.db_context.get_session() as session:
-                fact_repo = self.db_context.get_repository(session, AtomicFact)
-
-                existing = await fact_repo.find_by_section(section.id)
-                if existing:
-                    self._processed_sections.add(section.id)
-                    return existing
-
-                if not section.raw_text:
-                    logger.warning(f"Section {section.id} has no raw_text — skipping.")
+            async with lock:
+                # Re-check after acquiring lock (another coroutine may have finished first)
+                if section.id in self._processed_sections:
                     return []
 
-                facts = await self._extract_and_save(session, fact_repo, section)
-                self._processed_sections.add(section.id)
-                return facts
+                async with self.db_context.get_session() as session:
+                    fact_repo = self.db_context.get_repository(session, AtomicFact)
+
+                    existing = await fact_repo.find_by_section(section.id)
+                    if existing:
+                        self._processed_sections.add(section.id)
+                        return existing
+
+                    if not section.raw_text:
+                        logger.warning(
+                            f"Section {section.id} has no raw_text — skipping."
+                        )
+                        return []
+
+                    facts = await self._extract_and_save(session, fact_repo, section)
+                    self._processed_sections.add(section.id)
+                    return facts
 
     async def _extract_and_save(
         self, session, fact_repo, section: Section
     ) -> List[AtomicFact]:
         """Calls the LLM (off the event loop) and persists the resulting facts."""
-        async with self.semaphore:
-            logger.debug(f"LLM extraction for section: {section.path_id}")
 
-            # extract_atomic_facts is sync → run in a thread to avoid blocking
-            facts: List[AtomicFact] = await asyncio.to_thread(
-                extract_atomic_facts,
-                self.llm,
-                ATOMIC_FACT_SYSTEM,
-                ATOMIC_FACT_USER,
-                section.raw_text,
-                section.path_id,
-                section.id,
-            )
+        logger.debug(f"LLM extraction for section: {section.path_id}")
+
+        # extract_atomic_facts is sync → run in a thread to avoid blocking
+        facts: List[AtomicFact] = await asyncio.to_thread(
+            extract_atomic_facts,
+            self.llm,
+            ATOMIC_FACT_SYSTEM,
+            ATOMIC_FACT_USER,
+            section.raw_text,
+            section.path_id,
+            section.id,
+        )
 
         for fact in facts:
             await fact_repo.save(fact)

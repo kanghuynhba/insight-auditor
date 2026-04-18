@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     # Storage path
     lance_db_path: Path = Path("./lancedb")
     uploads_dir: Path = Path("./uploads")
-    vector_index_name: str = "textbooks"
+    vector_index_name: str = "text_chunk"
 
     # Used by the Chunker in the IngestionService
     chunk_size: int = 800

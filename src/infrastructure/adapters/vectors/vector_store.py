@@ -1,34 +1,16 @@
-# src/infrastructure/adapters/vectors/vector_store.py
-from abc import ABC, abstractmethod
-from typing import Any, List
-
-from src.infrastructure.chunking.text_chunk import TextChunk
+# src/infrastructure/adapters/vectors/vector_database_context.py
 
 
-class VectorStore(ABC):
-    """The base class for vector storage data-access classes."""
+import lancedb
 
-    @abstractmethod
-    def save_chunks(self, chunks: list[TextChunk]) -> None:
-        """Persists text embeddings to the vector store."""
-        pass
 
-    @abstractmethod
-    def search_chunks(
-        self, query: str, book_id: str, path_id: str, top_k: int = 5
-    ) -> list[dict[str, Any]]:
-        """Performs semantic search against chunks."""
-        pass
+class VectorDatabaseContext:
+    def __init__(self, settings: Settings):
+        self.settings = settings
+        # Engine for DB
+        self.db_uri = str(settings.lance_db_path)
+        # Engine for Vectors
 
-    @abstractmethod
-    async def get_chunks_by_book(self, book_id: str) -> List[dict[str, Any]]:
-        """
-        NEW: Mandatory method for all vector providers.
-        Retrieves all chunks belonging to a given book.
-        """
-        pass
+    async def get_connection(self):
 
-    @abstractmethod
-    def delete_book(self, book_id: str) -> None:
-        """Deletes all chunks associated with a specific book."""
-        pass
+        return await lancedb.connect(str(self.db_uri))

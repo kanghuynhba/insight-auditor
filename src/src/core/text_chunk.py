@@ -1,10 +1,13 @@
+# src/core/text_chunk.py
+
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from lancedb.pydantic import LanceModel
+from pydantic import Field, model_validator
 from src.core.helpers import new_id
 
 
-class TextChunk(BaseModel):
+class TextChunk(LanceModel):
     """Represents a strictly sized slice of text ready for vector embedding."""
 
     id: str = Field(default_factory=new_id)
@@ -18,6 +21,7 @@ class TextChunk(BaseModel):
     start_char: int
     end_char: int
     context_text: Optional[str] = None
+    vector: Vector(1536)
 
     model_config = {"frozen": True}
 

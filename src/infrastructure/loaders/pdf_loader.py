@@ -57,11 +57,12 @@ class PdfLoader(Loader):
             title = self._detect_title(doc, path)
             raw_entries = self._extract_entries(doc)
 
-        book = Entity()
-        chapters = self._build_chapters(raw_entries, book.id)
+        book_id = new_id()
+        chapters = self._build_sections(raw_entries, book_id)
 
         # Instantiate the frozen Book model
         book = Book(
+            id=book_id,
             title=title,
             source_format=FileType.Pdf,
             file_path=str(path),
@@ -155,7 +156,7 @@ class PdfLoader(Loader):
         _flush()
         return entries
 
-    def _build_chapters(self, entries: list[_RawEntry], book_id: str) -> list[Chapter]:
+    def _build_sections(self, entries: list[_RawEntry], book_id: str) -> list[Chapter]:
         """
         Level-1 entries become Chapters.
         Level-2+ entries become Sections inside the most-recent Chapter.

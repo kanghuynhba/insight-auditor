@@ -4,50 +4,37 @@ import time
 from typing import Any
 
 import lancedb
-from lancedb.pydantic import LanceModel, Vector
 from lancedb.table import LanceTable
-from openai import AzureOpenAI, RateLimitError
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    AzureOpenAI,
+    InternalServerError,
+    RateLimitError,
+)
 from src.core.config import Settings
-from src.infrastructure.adapters.vectors.vector_store import VectorStore
+from src.infrastructure.adapters.mariadb.vector_database_context import (
+    VectorDatabaseContext,
+)
 from src.infrastructure.chunking.text_chunk import TextChunk
+from src.infrastructure.persistence.vector_base_repository import VectorRepository
 
 
-class ChunkSchema(LanceModel):
-    id: str
-    book_id: str
-    section_id: str
-    path_id: str
-    text: str
-    vector: Vector(1536)
-    start_char: int
-    end_char: int
-    chunk_index: int
-    chunk_level: str
-    word_count: int
-    context_text: str | None
-
-
-class ChunkRepository(VectorStore):
-    def __init__(self, settings: Settings):
+class ChunkRepository(VectorRepository):
+    def __init__(self, settings: Settings, table: "LanceTable"):
         self._openai = AzureOpenAI(
             api_key=settings.azure_openai_api_key.get_secret_value(),
             azure_endpoint=str(settings.azure_openai_endpoint),
             api_version=str(settings.openai_api_version),
         )
         self._embedding_model = str(settings.embedding_model)
-        self._db = lancedb.connect(str(settings.lance_db_path))
-        self.table_name = settings.vector_index_name
-        self._table = self._init_table()
+        self._table = table
         self._write_lock = threading.Lock()
 
-    def _init_table(self) -> "LanceTable":
-        if self.table_name in self._db.list_tables():
-            return self._db.open_table(self.table_name)
-        return self._db.create_table(
-            self.table_name,
-            schema=ChunkSchema,
-            mode="overwrite",
-        )
+    @classmethod
+    async def create(cls, settings: Settings, vector_ctx: VectorDatabaseContext):
+        table = await vector_ctx.get_table(settings.vector_index_name)
+        return cls(settings, table)
 
     def _embed(self, texts: list[str], batch_size: int = 100) -> list[list[float]]:
         all_embeddings = []
@@ -61,10 +48,15 @@ class ChunkRepository(VectorStore):
                     )
                     all_embeddings.extend(item.embedding for item in response.data)
                     break
-                except RateLimitError:
+                except (
+                    RateLimitError,
+                    APIConnectionError,
+                    APITimeoutError,
+                    InternalServerError,
+                ) as e:
                     if attempt == 2:
                         raise
-                    time.sleep(2**attempt)  # 1s, 2s backoff
+                    time.sleep(2**attempt)
         return all_embeddings
 
     def save_chunks(self, chunks: list[TextChunk]) -> None:
@@ -77,15 +69,16 @@ class ChunkRepository(VectorStore):
             row["vector"] = vector
             data.append(row)
 
-        with self._write_lock:  # ← serialize writes, parallelize embeddings
+        with self._write_lock:
             self._table.add(data)
 
     def search_chunks(
         self, query: str, book_id: str, path_id: str, top_k: int = 5
     ) -> list[dict[str, Any]]:
         query_vector = self._embed([query])[0]
-        where_filter = f"book_id = '{book_id}' AND path_id LIKE '{path_id}%'"
-
+        where_filter = "book_id = ? AND path_id LIKE ?".where(
+            where_filter, [book_id, f"{path_id}%"], prefilter=True
+        )
         return (
             self._table.search(query_vector)
             .where(where_filter, prefilter=True)
@@ -96,17 +89,9 @@ class ChunkRepository(VectorStore):
     def delete_book(self, book_id: str) -> None:
         self._table.delete(f"book_id = '{book_id}'")
 
-    async def get_chunks_by_book(self, book_id: str) -> list[dict[str, Any]]:
-        """Retrieve all chunks belonging to a given book."""
-        import asyncio
-
-        def _sync_query():
-            # This bypasses vector search entirely.
-            df = self._table.to_pandas()
-            # Filter rows where book_id matches
-            filtered_df = df[df["book_id"] == book_id]
-
-            # Convert back to list of dicts
-            return filtered_df.to_dict(orient="records")
-
-        return await asyncio.to_thread(_sync_query)
+    def get_chunks_by_book(self, book_id: str) -> list[dict[str, Any]]:
+        """
+        Retrieve all chunks for a book using LanceDB's native scanner.
+        This is significantly faster than to_pandas().
+        """
+        return self._table.search().where(f"book_id = '{book_id}'").to_list()

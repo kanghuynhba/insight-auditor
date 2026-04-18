@@ -68,7 +68,6 @@ class Section(Entity, table=True):
     raw_text: Optional[str] = Field(
         default=None, sa_column=Column(MEDIUMTEXT, nullable=True)
     )
-    word_count: int = Field(default=0)  # MariaDB is happy because there is a default
 
     @property
     def word_count(self) -> int:
