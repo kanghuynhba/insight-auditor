@@ -3,8 +3,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from src.core.config import Settings
-
-from .text_chunk import TextChunk
+from src.core.text_chunk import TextChunk
 
 
 class Chunker(ABC):

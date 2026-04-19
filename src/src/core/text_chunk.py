@@ -2,7 +2,7 @@
 
 from typing import Any, Optional
 
-from lancedb.pydantic import LanceModel
+from lancedb.pydantic import LanceModel, Vector
 from pydantic import Field, model_validator
 from src.core.helpers import new_id
 
@@ -21,7 +21,7 @@ class TextChunk(LanceModel):
     start_char: int
     end_char: int
     context_text: Optional[str] = None
-    vector: Vector(1536)
+    vector: Optional[Vector(1536)] = None
 
     model_config = {"frozen": True}
 

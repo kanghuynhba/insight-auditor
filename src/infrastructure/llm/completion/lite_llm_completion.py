@@ -9,6 +9,7 @@ from src.infrastructure.llm.types import (
     LLMCompletionArgs,
     LLMCompletionMessagesParam,
     LLMCompletionResponse,
+    ModelConfig,
     ResponseFormat,
 )
 
@@ -25,18 +26,10 @@ class LiteLLMCompletion(LLMCompletion):
 
     def __init__(
         self,
-        *,
-        model: str,
-        api_key: str | None = None,
-        api_base: str | None = None,
-        api_version: str | None = None,
+        config: ModelConfig,
         **kwargs: Any,
     ) -> None:
-        self._model = model
-        self._api_key = api_key
-        self._api_base = api_base
-        self._api_version = api_version
-        self._extra_kwargs = kwargs
+        super().__init__(config, **kwargs)
 
     def completion(
         self,
@@ -79,16 +72,7 @@ class LiteLLMCompletion(LLMCompletion):
         """
         Assembles the LiteLLM-compatible dictionary.
         """
-        args = {
-            "model": self._model,
-            "messages": messages,
-            "api_key": self._api_key,
-            "api_base": self._api_base,
-            "api_version": self._api_version,
-            "num_retries": 3,
-            **self._extra_kwargs,
-            **kwargs,
-        }
+        args = {**self._config, **self._extra_kwargs, **kwargs, "messages": messages}
 
         if response_format is not None:
             if (

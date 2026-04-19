@@ -5,9 +5,9 @@ from uuid import uuid4
 
 import tiktoken
 from src.core.config import Settings
+from src.core.text_chunk import TextChunk
 
 from .chunker import Chunker
-from .text_chunk import TextChunk
 
 
 @dataclass

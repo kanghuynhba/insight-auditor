@@ -7,11 +7,20 @@ from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
 from openai.types.chat.chat_completion_message_param import ChatCompletionMessageParam
 from openai.types.completion_usage import CompletionUsage
 from pydantic import BaseModel, Field, computed_field
-from typing_extensions import TypedDict
+from typing_extensions import NotRequired, TypedDict
 
 LLMCompletionMessagesParam = str | Sequence[ChatCompletionMessageParam | dict[str, Any]]
 
 ResponseFormat = TypeVar("ResponseFormat", bound=object)
+
+
+class ModelConfig(TypedDict):
+    model: str
+    api_key: str
+    api_base: str
+    api_version: NotRequired[str]
+    timeout: NotRequired[float]
+    max_retries: NotRequired[int]
 
 
 class LLMCompletionResponse(BaseModel, Generic[ResponseFormat]):

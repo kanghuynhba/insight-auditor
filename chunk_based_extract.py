@@ -14,10 +14,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from sqlmodel import SQLModel, delete, select
-
-from src.core.atomic_fact import AtomicFact
-from src.core.config import get_settings
-from src.core.models import Book, Section
 from src.index.operations.extract_atomic_facts import extract_atomic_facts
 from src.infrastructure.adapters.mariadb.database_context import DatabaseContext
 from src.infrastructure.chunking.natural_boundary_chunker import NaturalBoundaryChunker
@@ -31,6 +27,10 @@ from src.infrastructure.prompts.index.extract_atomic_facts import (
     ATOMIC_FACT_USER,
 )
 from src.services.ingestion import IngestionService
+
+from src.core.atomic_fact import AtomicFact
+from src.core.config import get_settings
+from src.core.models import Book, Section
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -203,13 +203,7 @@ async def ingest_and_extract(pdf_path: Path, concurrency: int = 3) -> None:
         db_context=db_context,
     )
 
-    llm_params = settings.litellm_config
-    llm = LiteLLMCompletion(
-        model=llm_params["model"],
-        api_key=llm_params["api_key"],
-        api_base=llm_params["base_url"],
-        api_version=llm_params.get("api_version"),
-    )
+    llm = LiteLLMCompletion(config=settings.generative_model)
 
     book = None
     try:

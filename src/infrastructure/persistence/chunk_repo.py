@@ -13,10 +13,10 @@ from openai import (
     RateLimitError,
 )
 from src.core.config import Settings
+from src.core.text_chunk import TextChunk
 from src.infrastructure.adapters.mariadb.vector_database_context import (
     VectorDatabaseContext,
 )
-from src.infrastructure.chunking.text_chunk import TextChunk
 from src.infrastructure.persistence.vector_base_repository import VectorRepository
 
 
@@ -75,13 +75,11 @@ class ChunkRepository(VectorRepository):
     def search_chunks(
         self, query: str, book_id: str, path_id: str, top_k: int = 5
     ) -> list[dict[str, Any]]:
-        query_vector = self._embed([query])[0]
-        where_filter = "book_id = ? AND path_id LIKE ?".where(
-            where_filter, [book_id, f"{path_id}%"], prefilter=True
-        )
         return (
             self._table.search(query_vector)
-            .where(where_filter, prefilter=True)
+            .where(
+                f"book_id = '{book_id}' AND path_id LIKE '{path_id}%'", prefilter=True
+            )
             .limit(top_k)
             .to_list()
         )

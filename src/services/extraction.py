@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class ExtractionService:
     def __init__(
         self,
-        llm: LLMCompletion,  # ← abstract type, not the concrete LiteLLMCompletion
+        llm: LLMCompletion,
         db_context: DatabaseContext,
         concurrency: int = 5,
     ):

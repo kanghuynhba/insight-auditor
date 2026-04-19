@@ -9,6 +9,7 @@ if TYPE_CHECKING:
         LLMCompletionArgs,
         LLMCompletionChunk,
         LLMCompletionResponse,
+        ModelConfig,
         ResponseFormat,
     )
 
@@ -19,15 +20,12 @@ class LLMCompletion(ABC):
     @abstractmethod
     def __init__(
         self,
-        *,
-        model: str,
-        api_key: str | None = None,
-        api_base: str | None = None,
-        api_version: str | None = None,
+        config: ModelConfig,
         **kwargs: Any,
     ):
         """Initialize the LLMCompletion"""
-        pass
+        self._config = config
+        self._extra_kwargs = kwargs
 
     @abstractmethod
     def completion(

@@ -2,7 +2,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, List
 
-from src.infrastructure.chunking.text_chunk import TextChunk
+from src.core.text_chunk import TextChunk
 
 
 class VectorRepository(ABC):

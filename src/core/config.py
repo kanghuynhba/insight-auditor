@@ -17,8 +17,8 @@ class Settings(BaseSettings):
     azure_openai_api_key: SecretStr
     azure_openai_endpoint: HttpUrl
     openai_api_version: str
-    generative_model: str
-    embedding_model: str
+    generative_model_name: str
+    embedding_model_name: str
     registry_name: str
     api_type: str
 
@@ -65,14 +65,26 @@ class Settings(BaseSettings):
         return str(v).split("/openai")[0].rstrip("/")
 
     @property
-    def litellm_config(self) -> dict:
+    def generative_model(self) -> ModelConfig:
         """
         Returns a dictionary formatted for litellm.completion()
         """
         return {
-            "model": f"azure/{self.generative_model}",
+            "model": f"azure/{self.generative_model_name}",
             "api_key": self.azure_openai_api_key.get_secret_value(),
-            "base_url": str(self.azure_openai_endpoint),
+            "api_base": str(self.azure_openai_endpoint),
+            "api_version": self.openai_api_version,
+        }
+
+    @property
+    def embedding_model(self) -> ModelConfig:
+        """
+        Returns a dictionary formatted for litellm.embedding()
+        """
+        return {
+            "model": f"azure/{self.embedding_model_name}",
+            "api_key": self.azure_openai_api_key.get_secret_value(),
+            "api_base": str(self.azure_openai_endpoint),
             "api_version": self.openai_api_version,
         }
 
