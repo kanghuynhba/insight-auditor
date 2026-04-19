@@ -5,63 +5,38 @@ from typing import Any
 
 import lancedb
 from lancedb.table import LanceTable
-from openai import (
-    APIConnectionError,
-    APITimeoutError,
-    AzureOpenAI,
-    InternalServerError,
-    RateLimitError,
-)
 from src.core.config import Settings
 from src.core.text_chunk import TextChunk
 from src.infrastructure.adapters.mariadb.vector_database_context import (
     VectorDatabaseContext,
 )
+from src.infrastructure.llm.embedding.embedding import LLMEmbedding
 from src.infrastructure.persistence.vector_base_repository import VectorRepository
 
 
 class ChunkRepository(VectorRepository):
-    def __init__(self, settings: Settings, table: "LanceTable"):
-        self._openai = AzureOpenAI(
-            api_key=settings.azure_openai_api_key.get_secret_value(),
-            azure_endpoint=str(settings.azure_openai_endpoint),
-            api_version=str(settings.openai_api_version),
-        )
-        self._embedding_model = str(settings.embedding_model)
+    def __init__(self, embedder: LLMEmbedding, table: "LanceTable"):
+        self._embedder = embedder
         self._table = table
         self._write_lock = threading.Lock()
 
     @classmethod
-    async def create(cls, settings: Settings, vector_ctx: VectorDatabaseContext):
+    async def create(
+        cls,
+        settings: Settings,
+        vector_ctx: VectorDatabaseContext,
+        embedder: "LLMEmbedding",
+    ) -> ChunkRepository:
         table = await vector_ctx.get_table(settings.vector_index_name)
-        return cls(settings, table)
-
-    def _embed(self, texts: list[str], batch_size: int = 100) -> list[list[float]]:
-        all_embeddings = []
-        for i in range(0, len(texts), batch_size):
-            batch = texts[i : i + batch_size]
-            for attempt in range(3):
-                try:
-                    response = self._openai.embeddings.create(
-                        model=self._embedding_model,
-                        input=batch,
-                    )
-                    all_embeddings.extend(item.embedding for item in response.data)
-                    break
-                except (
-                    RateLimitError,
-                    APIConnectionError,
-                    APITimeoutError,
-                    InternalServerError,
-                ) as e:
-                    if attempt == 2:
-                        raise
-                    time.sleep(2**attempt)
-        return all_embeddings
+        return cls(embedder, table)
 
     def save_chunks(self, chunks: list[TextChunk]) -> None:
+        if not chunks:
+            return
+
         texts = [chunk.text for chunk in chunks]
-        vectors = self._embed(texts)
+        response = self._embedder.embed(input=texts)
+        vectors = response.embeddings
 
         data = []
         for chunk, vector in zip(chunks, vectors):
@@ -75,6 +50,7 @@ class ChunkRepository(VectorRepository):
     def search_chunks(
         self, query: str, book_id: str, path_id: str, top_k: int = 5
     ) -> list[dict[str, Any]]:
+        query_vector = self._embedder.embed(input=[query]).first_embedding
         return (
             self._table.search(query_vector)
             .where(

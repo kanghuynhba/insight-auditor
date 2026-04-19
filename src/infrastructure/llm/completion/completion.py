@@ -17,7 +17,6 @@ if TYPE_CHECKING:
 class LLMCompletion(ABC):
     """Abstract base class for language model completions."""
 
-    @abstractmethod
     def __init__(
         self,
         config: ModelConfig,
@@ -32,6 +31,6 @@ class LLMCompletion(ABC):
         self,
         /,
         **kwargs: Unpack["LLMCompletionArgs[ResponseFormat]"],
-    ) -> "LLMCompletionResponse[ResponseFormat] | Iterator[LLMCompletionChunk]":
+    ) -> LLMEmbeddingResponse:
         """Sync completion method"""
         pass
