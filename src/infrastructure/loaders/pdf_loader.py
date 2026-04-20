@@ -14,6 +14,7 @@ from .file_type import FileType
 from .loader import Loader
 
 
+# TODO: Move to src/infrastructure/loaders/_raw_entry.py - internal dataclass for PDF parsing
 @dataclass
 class _RawEntry:
     """Internal data structure to hold extraction results before domain mapping."""
@@ -24,6 +25,7 @@ class _RawEntry:
     level: int
 
 
+# TODO: Move to src/infrastructure/loaders/path_counter.py - path ID generation is reusable
 @dataclass
 class _PathCounter:
     """
@@ -72,6 +74,7 @@ class PdfLoader(Loader):
         )
         return book
 
+    # TODO: Refactor into separate toc_extractor.py - TOC vs heuristic extraction
     def _extract_entries(self, doc: fitz.Document) -> List[_RawEntry]:
         """
         Orchestrates chapter extraction. Tries TOC first, falls back to heuristics.
@@ -83,6 +86,7 @@ class PdfLoader(Loader):
 
         return self._extract_via_heuristic(doc)
 
+    # TODO: Move to toc_extractor.py - TOC-based extraction logic
     def _extract_via_toc(self, doc: fitz.Document, toc: list) -> List[_RawEntry]:
         """Extracts chapters cleanly using the PDF's internal Table of Contents."""
         entries: list[_RawEntry] = []
@@ -103,6 +107,7 @@ class PdfLoader(Loader):
 
         return entries
 
+    # TODO: Move to toc_extractor.py - font-size based fallback extraction
     def _extract_via_heuristic(self, doc: fitz.Document) -> List[_RawEntry]:
         """
         Treats large font spans as headings.  Font-size thresholds:
@@ -156,6 +161,7 @@ class PdfLoader(Loader):
         _flush()
         return entries
 
+    # TODO: Move to book_builder.py - section/chapter building logic
     def _build_sections(self, entries: list[_RawEntry], book_id: str) -> list[Chapter]:
         """
         Level-1 entries become Chapters.
@@ -208,30 +214,30 @@ class PdfLoader(Loader):
 
         return chapters
 
+    # TODO: Move to book_builder.py - page-to-text extraction
     def _extract_page_range(self, doc: fitz.Document, first: int, last: int) -> str:
         parts = []
         for page_num in range(first, min(last, doc.page_count)):
             parts.append(doc[page_num].get_text("text"))
         return "\n\n".join(parts).strip()
 
+    # TODO: Move to book_builder.py - font size to heading level mapping
     @staticmethod
     def _heading_level(font_size: float) -> Optional[int]:
         """Returns 1, 2, or 3 for heading sizes; None for body text."""
 
         if font_size >= 20:
-
             return 1
 
         if font_size >= 16:
-
             return 2
 
         if font_size >= 13:
-
             return 3
 
         return None
 
+    # TODO: Move to book_builder.py - title detection from metadata or filename
     @staticmethod
     def _detect_title(doc: fitz.Document, file_path: Path) -> str:
         """

@@ -10,6 +10,7 @@ from src.core.text_chunk import TextChunk
 from .chunker import Chunker
 
 
+# TODO: Extract _Sentence and token logic into src/core/text_processor.py
 @dataclass
 class _Sentence:
     text: str
@@ -121,6 +122,7 @@ class NaturalBoundaryChunker(Chunker):
 
         return chunks
 
+    # TODO: Move to TextProcessor._clean() - text normalization belongs in core/domain
     # Text cleaning
     def _clean(self, text: str) -> str:
         text = self._FORM_FEED.sub("\n", text)
@@ -128,6 +130,7 @@ class NaturalBoundaryChunker(Chunker):
         text = self._HORIZ_WS.sub(" ", text)
         return self._MULTI_BLANK.sub("\n\n", text).strip()
 
+    # TODO: Move to TextProcessor._parse_sentences() - sentence detection is reusable
     # Parsing: text → list[paragraph], each paragraph = list[_Sentence]
     def _parse(self, text: str) -> list[list[_Sentence]]:
         paragraphs: list[list[_Sentence]] = []
@@ -146,6 +149,7 @@ class NaturalBoundaryChunker(Chunker):
                 paragraphs.append(sentences)
         return paragraphs
 
+    # TODO: Move to TextProcessor._accumulate_chunks() - chunking logic is reusable
     # Accumulation: paragraphs → chunks (list[list[_Sentence]])
     def _accumulate(self, paragraphs: list[list[_Sentence]]) -> list[list[_Sentence]]:
         """Accumulate sentences into token-bounded chunks.
@@ -214,6 +218,7 @@ class NaturalBoundaryChunker(Chunker):
         tail.reverse()
         return self._join(tail)
 
+    # TODO: Move to TextProcessor._build_context() - context expansion is reusable
     # Context-window expansion
     def _build_context_windows(self, texts: list[str]) -> list[str]:
         windows: list[str] = []
@@ -239,6 +244,7 @@ class NaturalBoundaryChunker(Chunker):
             windows.append(" ".join(parts))
         return windows
 
+    # TODO: Move to TextProcessor._window_split() - word windowing is reusable
     # Helpers
     def _word_window_split(self, text: str) -> list[_Sentence]:
         """Split an oversized sentence into word-window sub-chunks."""
@@ -261,10 +267,12 @@ class NaturalBoundaryChunker(Chunker):
         """
         return max(1, len(cls._ENCODER.encode(text)))
 
+    # TODO: Move to TextProcessor.join_sentences() - string joining is reusable
     @staticmethod
     def _join(sentences: list[_Sentence]) -> str:
         return " ".join(s.text for s in sentences)
 
+    # TODO: Move to TextProcessor._detect_chunk_level() - level detection is reusable
     @staticmethod
     def _detect_level(text: str) -> str:
         if "\n\n" in text:

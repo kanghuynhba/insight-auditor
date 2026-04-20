@@ -83,6 +83,7 @@ class LiteLLMCompletion(LLMCompletion):
 
         return args
 
+    # TODO: move this out into some helpers that supports json processing
     @staticmethod
     def _parse_json(
         content: str, response_format: type[ResponseFormat]
