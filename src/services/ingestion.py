@@ -31,20 +31,16 @@ class IngestionService:
         self.semaphore = asyncio.Semaphore(max_workers)
 
     async def _process_section(self, section, book_id: str) -> int:
-        """
-        Handles vector embedding and storage.
-        Note: save_chunks is wrapped in to_thread because LanceDB is synchronous.
-        """
         async with self.semaphore:
             chunks = self.chunker.chunk_section(
-                section_id=section.id,
-                book_id=book_id,
-                path_id=section.path_id,
+                section_id=section.id,  # Keyword argument
+                book_id=book_id,  # Keyword argument
+                path_id=section.path_id,  # Keyword argument
                 text=section.raw_text,
             )
             if chunks:
-                # Offload synchronous vector DB writes to a thread pool
-                await asyncio.to_thread(self.vector_repo.save_chunks, chunks)
+                # FIX: Remove asyncio.to_thread. Call it directly with await.
+                await self.vector_repo.save_chunks(chunks)
                 return len(chunks)
             return 0
 

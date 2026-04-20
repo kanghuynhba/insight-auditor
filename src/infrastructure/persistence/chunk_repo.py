@@ -7,7 +7,7 @@ import lancedb
 from lancedb.table import LanceTable
 from src.core.config import Settings
 from src.core.text_chunk import TextChunk
-from src.infrastructure.adapters.mariadb.vector_database_context import (
+from src.infrastructure.adapters.vectors.vector_database_context import (
     VectorDatabaseContext,
 )
 from src.infrastructure.llm.embedding.embedding import LLMEmbedding
@@ -30,7 +30,7 @@ class ChunkRepository(VectorRepository):
         table = await vector_ctx.get_table(settings.vector_index_name)
         return cls(embedder, table)
 
-    def save_chunks(self, chunks: list[TextChunk]) -> None:
+    async def save_chunks(self, chunks: list[TextChunk]) -> None:
         if not chunks:
             return
 
@@ -47,11 +47,11 @@ class ChunkRepository(VectorRepository):
         with self._write_lock:
             self._table.add(data)
 
-    def search_chunks(
+    async def search_chunks(
         self, query: str, book_id: str, path_id: str, top_k: int = 5
     ) -> list[dict[str, Any]]:
         query_vector = self._embedder.embed(input=[query]).first_embedding
-        return (
+        return await (
             self._table.search(query_vector)
             .where(
                 f"book_id = '{book_id}' AND path_id LIKE '{path_id}%'", prefilter=True
@@ -60,12 +60,12 @@ class ChunkRepository(VectorRepository):
             .to_list()
         )
 
-    def delete_book(self, book_id: str) -> None:
-        self._table.delete(f"book_id = '{book_id}'")
+    async def delete_book(self, book_id: str) -> None:
+        await self._table.delete(f"book_id = '{book_id}'")
 
-    def get_chunks_by_book(self, book_id: str) -> list[dict[str, Any]]:
+    async def get_chunks_by_book(self, book_id: str) -> list[dict[str, Any]]:
         """
         Retrieve all chunks for a book using LanceDB's native scanner.
         This is significantly faster than to_pandas().
         """
-        return self._table.search().where(f"book_id = '{book_id}'").to_list()
+        return await self._table.query().where(f"book_id = '{book_id}'").to_list()

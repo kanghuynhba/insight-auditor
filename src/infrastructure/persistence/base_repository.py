@@ -1,4 +1,4 @@
-e src/infrastructure/persistence/base_repository.py
+# src/infrastructure/persistence/base_repository.py
 from typing import Any, Generic, List, Optional, Type, TypeVar
 
 from sqlmodel import select

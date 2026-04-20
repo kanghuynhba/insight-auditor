@@ -4,8 +4,7 @@ from typing import List
 
 from sqlmodel.ext.asyncio.session import AsyncSession
 from src.core.atomic_fact import AtomicFact
-
-from .base_repository import Repository
+from src.infrastructure.persistence.base_repository import Repository
 
 
 class AtomicFactRepository(Repository[AtomicFact]):

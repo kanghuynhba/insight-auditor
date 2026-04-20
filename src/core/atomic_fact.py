@@ -6,9 +6,7 @@ from sqlalchemy import JSON, TEXT
 from sqlmodel import Column, Field, Relationship
 from src.core.entity import Entity
 from src.core.enums import Tier
-
-if TYPE_CHECKING:
-    from src.core.models import Section
+from src.core.models import Section
 
 TIER_WEIGHTS = {Tier.CRITICAL: 3, Tier.IMPORTANT: 2, Tier.NUANCE: 1}
 
