@@ -63,9 +63,10 @@ class ChunkRepository(VectorRepository):
     async def delete_book(self, book_id: str) -> None:
         await self._table.delete(f"book_id = '{book_id}'")
 
-    async def get_chunks_by_book(self, book_id: str) -> list[dict[str, Any]]:
+    async def get_chunks_by_book(self, book_id: str) -> list[TextChunk]:
         """
         Retrieve all chunks for a book using LanceDB's native scanner.
         This is significantly faster than to_pandas().
         """
-        return await self._table.query().where(f"book_id = '{book_id}'").to_list()
+        results = self._table.query().where(f"book_id = '{book_id}'").to_list()
+        return [TextChunk(**r) for r in results]

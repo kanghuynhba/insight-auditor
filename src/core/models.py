@@ -19,7 +19,9 @@ class Book(Entity, table=True):
     source_filename: str
     total_chapters: int = 0
 
-    chapters: List["Chapter"] = Relationship(back_populates="book")
+    chapters: List["Chapter"] = Relationship(
+        back_populates="book", sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
 
     @field_validator("title")
     @classmethod
@@ -42,7 +44,10 @@ class Chapter(Entity, table=True):
 
     book_id: str = Field(sa_column=Column(ForeignKey("books.id"), index=True))
     book: Optional["Book"] = Relationship(back_populates="chapters")
-    sections: List["Section"] = Relationship(back_populates="chapter")
+    sections: List["Section"] = Relationship(
+        back_populates="chapter",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
 
     @field_validator("index")
     @classmethod

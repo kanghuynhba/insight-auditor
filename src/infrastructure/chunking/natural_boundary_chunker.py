@@ -55,69 +55,87 @@ class NaturalBoundaryChunker(Chunker):
     # Public API
     def chunk_section(
         self,
-        section_id: str,
-        book_id: str,
-        path_id: str,
-        text: str,
-        section_title: str = "",
+        section: Any,  # Using Any to avoid strict circular imports with Section
     ) -> list[TextChunk]:
-        """Chunk the text into natural-boundary chunks with expanded context.
-
-        Args:
-            section_id:     Identifier for the section being chunked.
-            book_id:        Identifier for the parent book.
-            path_id:        Identifier for the file path / TOC node.
-            text:           Raw section text to chunk.
-            section_title:  Human-readable title prepended to every chunk so
-                            the LLM always knows which section it is reading.
         """
-        cleaned = self._clean(text)
+        Chunk the text into natural-boundary chunks using a Section domain model.
+
+        This method leverages the section's hierarchy (Chapter/Book) to provide
+        rich metadata for each chunk.
+        """
+        # 1. Access required text and metadata from the domain model
+        raw_text = section.raw_text
+
+        book_title = getattr(
+            getattr(getattr(section, "chapter", {}), "book", {}),
+            "title",
+            "Unknown Book",
+        )
+        chapter_title = getattr(
+            getattr(section, "chapter", {}), "title", "Unknown Chapter"
+        )
+
+        section_title = getattr(section, "title", "Unknown Section")
+
+        # 2. Pre-process and clean the text
+        cleaned = self._clean(raw_text)
         if not cleaned:
             return []
 
+        # 3. Hierarchy-aware splitting (Paragraphs -> Sentences)
         paragraphs = self._parse(cleaned)
+
+        # 4. Token-bounded accumulation
         raw_chunks = self._accumulate(paragraphs)
         if not raw_chunks:
             return []
 
+        # 5. Build sliding window overlaps and context expansion
         overlapped = self._build_overlapped_texts(raw_chunks)
         context_windows = self._build_context_windows(overlapped)
+
         chunks: list[TextChunk] = []
         current_char_offset = 0
 
         for i, sentence_list in enumerate(raw_chunks):
             body_text = self._join(sentence_list)
 
-            # overlap from previous chunk
+            # Generate overlap from previous chunk for semantic continuity
             overlap_text = ""
             if i > 0 and self._overlap_budget:
                 overlap_text = self._build_overlap_tail(raw_chunks[i - 1])
 
+            # Construct final text with prepended context headers
+            # This helps LLMs maintain global context within small windows
             full_chunk_text = (
                 f"{overlap_text} {body_text}" if overlap_text else body_text
             )
 
-            if section_title:
-                full_chunk_text = f"[{section_title}]\n{full_chunk_text}"
+            # Prepend breadcrumb-style metadata
+            header = f"[{book_title} > {chapter_title} > {section_title}]"
+            full_chunk_text = f"{header}\n{full_chunk_text}"
 
+            # Calculate character-level offsets for pinpointing source text
             start_idx = current_char_offset
             end_idx = start_idx + len(body_text)
 
             chunks.append(
                 TextChunk(
                     id=str(uuid4()),
-                    book_id=book_id,
-                    section_id=section_id,
-                    path_id=path_id,
+                    book_id=section.chapter.book_id,
+                    section_id=section.id,
+                    path_id=section.path_id,
                     text=full_chunk_text,
                     start_char=start_idx,
                     end_char=end_idx,
                     chunk_index=i,
                     chunk_level=self._detect_level(overlapped[i]),
-                    word_count=len(overlapped[i].split()),
+                    word_count=len(body_text.split()),
                     context_text=context_windows[i],
                 )
             )
+
+            # Update offset for next chunk (including whitespace/delimiter)
             current_char_offset = end_idx + 1
 
         return chunks

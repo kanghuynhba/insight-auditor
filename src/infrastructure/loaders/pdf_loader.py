@@ -1,5 +1,5 @@
 # src/infrastructure/loaders/pdf_loader.py
-
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -59,8 +59,8 @@ class PdfLoader(Loader):
             title = self._detect_title(doc, path)
             raw_entries = self._extract_entries(doc)
 
-        book_id = new_id()
-        chapters = self._build_sections(raw_entries, book_id)
+        book_id = _generate_toc_hash(title, raw_entries)
+        chapters = self._build_chapters(raw_entries, book_id)
 
         # Instantiate the frozen Book model
         book = Book(
@@ -73,6 +73,21 @@ class PdfLoader(Loader):
             chapters=chapters,
         )
         return book
+
+    def _generate_toc_hash(self, title: str, entries: List[_RawEntry]) -> str:
+        """
+        Creates a deterministic SHA-256 fingerprint of the book's structure.
+        Similar to gen_sha512_hash in GraphRAG[cite: 20].
+        """
+        # Create a string representation of the TOC: Title + Levels + Entry Titles
+        # We include levels and indices to catch structural changes even if titles are same
+        fingerprint_parts = [title]
+        for entry in entries:
+            fingerprint_parts.append(f"{entry.level}:{entry.title}")
+
+        fingerprint_str = "|".join(fingerprint_parts)
+
+        return hashlib.sha256(fingerprint_str.encode()).hexdigest()
 
     # TODO: Refactor into separate toc_extractor.py - TOC vs heuristic extraction
     def _extract_entries(self, doc: fitz.Document) -> List[_RawEntry]:
@@ -162,7 +177,7 @@ class PdfLoader(Loader):
         return entries
 
     # TODO: Move to book_builder.py - section/chapter building logic
-    def _build_sections(self, entries: list[_RawEntry], book_id: str) -> list[Chapter]:
+    def _build_chapters(self, entries: list[_RawEntry], book_id: str) -> list[Chapter]:
         """
         Level-1 entries become Chapters.
         Level-2+ entries become Sections inside the most-recent Chapter.
