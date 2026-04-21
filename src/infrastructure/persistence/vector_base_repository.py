@@ -21,7 +21,7 @@ class VectorRepository(ABC):
         pass
 
     @abstractmethod
-    async def get_chunks_by_book(self, book_id: str) -> List[dict[str, Any]]:
+    async def get_chunks_by_book(self, book_id: str) -> List[TextChunk]:
         """
         NEW: Mandatory method for all vector providers.
         Retrieves all chunks belonging to a given book.
@@ -31,4 +31,9 @@ class VectorRepository(ABC):
     @abstractmethod
     def delete_book(self, book_id: str) -> None:
         """Deletes all chunks associated with a specific book."""
+        pass
+
+    @abstractmethod
+    async def get_chunks_by_section(self, section_id: str) -> List[TextChunk]:
+        """Retrieves all chunks belonging to a given section."""
         pass

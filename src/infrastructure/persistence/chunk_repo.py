@@ -1,22 +1,17 @@
-# src/infrastructure/persistence/chunk_repo.py
 import threading
-import time
-from typing import Any
+from typing import Any, List
 
-import lancedb
 from lancedb.table import LanceTable
 from src.core.config import Settings
 from src.core.text_chunk import TextChunk
 from src.infrastructure.adapters.vectors.vector_database_context import (
     VectorDatabaseContext,
 )
-from src.infrastructure.llm.embedding.embedding import LLMEmbedding
 from src.infrastructure.persistence.vector_base_repository import VectorRepository
 
 
 class ChunkRepository(VectorRepository):
-    def __init__(self, embedder: LLMEmbedding, table: "LanceTable"):
-        self._embedder = embedder
+    def __init__(self, table: "LanceTable"):
         self._table = table
         self._write_lock = threading.Lock()
 
@@ -25,32 +20,37 @@ class ChunkRepository(VectorRepository):
         cls,
         settings: Settings,
         vector_ctx: VectorDatabaseContext,
-        embedder: "LLMEmbedding",
-    ) -> ChunkRepository:
+    ) -> "ChunkRepository":
+        """Factory method to initialize the repository with the correct table."""
         table = await vector_ctx.get_table(settings.vector_index_name)
-        return cls(embedder, table)
+        return cls(table)
 
-    async def save_chunks(self, chunks: list[TextChunk]) -> None:
+    async def save_chunks(self, chunks: List[TextChunk]) -> None:
+        """
+        Saves chunks directly to LanceDB.
+        Expects chunks to already have their 'vector' field populated.
+        """
         if not chunks:
             return
 
-        texts = [chunk.text for chunk in chunks]
-        response = self._embedder.embed(input=texts)
-        vectors = response.embeddings
-
         data = []
-        for chunk, vector in zip(chunks, vectors):
-            row = chunk.model_dump()
-            row["vector"] = vector
-            data.append(row)
+        for chunk in chunks:
+            if chunk.vector is None:
+                raise ValueError(f"Chunk {chunk.id} is missing its embedding vector.")
+
+            # Convert Pydantic model to dict for LanceDB
+            data.append(chunk.model_dump())
 
         with self._write_lock:
             self._table.add(data)
 
     async def search_chunks(
-        self, query: str, book_id: str, path_id: str, top_k: int = 5
-    ) -> list[dict[str, Any]]:
-        query_vector = self._embedder.embed(input=[query]).first_embedding
+        self, query_vector: List[float], book_id: str, path_id: str, top_k: int = 5
+    ) -> List[dict[str, Any]]:
+        """
+        Search chunks using a pre-calculated vector.
+        The caller (Service/Operation) is now responsible for embedding the query.
+        """
         return await (
             self._table.search(query_vector)
             .where(
@@ -63,10 +63,12 @@ class ChunkRepository(VectorRepository):
     async def delete_book(self, book_id: str) -> None:
         await self._table.delete(f"book_id = '{book_id}'")
 
-    async def get_chunks_by_book(self, book_id: str) -> list[TextChunk]:
-        """
-        Retrieve all chunks for a book using LanceDB's native scanner.
-        This is significantly faster than to_pandas().
-        """
+    async def get_chunks_by_book(self, book_id: str) -> List[TextChunk]:
+        """Retrieve all chunks for a book using LanceDB's native scanner."""
         results = self._table.query().where(f"book_id = '{book_id}'").to_list()
+        return [TextChunk(**r) for r in results]
+
+    async def get_chunks_by_section(self, section_id: str) -> List[TextChunk]:
+        """Retrieve all chunks for a specific section."""
+        results = self._table.query().where(f"section_id = '{section_id}'").to_list()
         return [TextChunk(**r) for r in results]

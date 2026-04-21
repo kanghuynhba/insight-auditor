@@ -26,3 +26,16 @@ class SectionRepository(Repository[Section]):
         )
         result = await self.session.exec(statement)
         return result.all()
+
+    async def get_ids_by_book(self, book_id: str) -> List[str]:
+        """
+        Fetches only the section IDs for a book.
+        Highly efficient for orchestration tasks.
+        """
+        statement = (
+            select(Section.id)
+            .join(Chapter, Section.chapter_id == Chapter.id)
+            .where(Chapter.book_id == book_id)
+        )
+        result = await self.session.exec(statement)
+        return list(result.all())

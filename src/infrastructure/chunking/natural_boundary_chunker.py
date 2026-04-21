@@ -74,7 +74,6 @@ class NaturalBoundaryChunker(Chunker):
         chapter_title = getattr(
             getattr(section, "chapter", {}), "title", "Unknown Chapter"
         )
-
         section_title = getattr(section, "title", "Unknown Section")
 
         # 2. Pre-process and clean the text

@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class BookExtractionService:
+    # file_path -> Loader -> save(Book)
     def __init__(self, loaders: Dict[FileType, Loader], db_context: DatabaseContext):
         self.loaders = loaders
         self.db_context = db_context
