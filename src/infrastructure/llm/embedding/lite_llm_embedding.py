@@ -47,6 +47,26 @@ class LiteLLMEmbedding(LLMEmbedding):
             logger.error(f"LiteLLM embedding call failed: {str(e)}")
             raise
 
+    async def async_embed(
+        self,
+        /,
+        **kwargs: Unpack[LLMEmbeddingArgs],
+    ) -> LLMEmbeddingResponse:
+        """
+        Asynchronous embedding call.
+        """
+        payload = self._build_args(**kwargs)
+
+        try:
+            # Notice the use of aembedding instead of embedding
+            raw_response = await litellm.aembedding(**payload)
+
+            return LLMEmbeddingResponse(**raw_response.model_dump())
+
+        except Exception as e:
+            logger.error(f"LiteLLM async embedding call failed: {str(e)}")
+            raise
+
     def _build_args(self, **kwargs: Any) -> dict[str, Any]:
         """
         Assembles the LiteLLM-compatible dictionary for embeddings.

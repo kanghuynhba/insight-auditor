@@ -32,3 +32,8 @@ class VectorRepository(ABC):
     def delete_book(self, book_id: str) -> None:
         """Deletes all chunks associated with a specific book."""
         pass
+
+    @abstractmethod
+    async def get_chunks_by_section(self, section_id: str) -> List[TextChunk]:
+        """Retrieve all chunks for a specific section."""
+        pass

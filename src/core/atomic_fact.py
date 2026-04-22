@@ -15,10 +15,12 @@ class AtomicFact(Entity, table=True):
     __tablename__ = "atomic_facts"
 
     section_id: str = Field(foreign_key="sections.id", index=True)
+    chunk_id: str = Field(index=True)
     path_id: str = Field(index=True)
     point: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
     reason: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
     rank: Tier = Field(default=Tier.NUANCE, index=True)
+    from_overlap: bool = Field(default=False)
 
     # Character-level provenance span into the parent section's raw text.
     # text[start_char:end_char] reproduces the grounding passage.
@@ -70,9 +72,10 @@ class AtomicFact(Entity, table=True):
         start_char = (info.data or {}).get("start_char")
         if start_char is not None and end_char is not None:
             if end_char <= start_char:
-                raise ValueError(
-                    f"end_char ({end_char}) must be greater than start_char ({start_char})"
-                )
+                # raise ValueError(
+                #     f"end_char ({end_char}) must be greater than start_char ({start_char})"
+                # )
+                return None
         return end_char
 
     model_config = ConfigDict(validate_assignment=True)

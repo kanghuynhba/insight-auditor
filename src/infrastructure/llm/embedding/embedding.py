@@ -34,3 +34,12 @@ class LLMEmbedding(ABC):
     ) -> "LLMEmbeddingResponse":
         """Sync Embedding method"""
         pass
+
+    @abstractmethod
+    async def async_embed(
+        self,
+        /,
+        **kwargs: Unpack["LLMEmbeddingArgs[ResponseFormat]"],
+    ) -> "LLMEmbeddingResponse":
+        """Async Embedding method"""
+        pass

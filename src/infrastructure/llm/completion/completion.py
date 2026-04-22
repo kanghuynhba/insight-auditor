@@ -34,3 +34,14 @@ class LLMCompletion(ABC):
     ) -> LLMEmbeddingResponse:
         """Sync completion method"""
         pass
+
+    @abstractmethod
+    async def async_completion(
+        self,
+        /,
+        **kwargs: Unpack[LLMCompletionArgs[ResponseFormat]],
+    ) -> LLMCompletionResponse[ResponseFormat]:
+        """
+        Asynchronous completion call with automatic normalization.
+        """
+        pass

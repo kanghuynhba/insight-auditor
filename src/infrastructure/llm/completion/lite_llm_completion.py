@@ -63,6 +63,38 @@ class LiteLLMCompletion(LLMCompletion):
             logger.error(f"LiteLLM call failed: {str(e)}")
             raise
 
+    async def async_completion(
+        self,
+        /,
+        **kwargs: Unpack[LLMCompletionArgs[ResponseFormat]],
+    ) -> LLMCompletionResponse[ResponseFormat]:
+        """
+        Asynchronous completion call with automatic normalization.
+        """
+        messages: LLMCompletionMessagesParam = kwargs.pop("messages")
+        if isinstance(messages, str):
+            messages = [{"role": "user", "content": messages}]
+
+        response_format = kwargs.pop("response_format", None)
+        payload = self._build_args(messages, response_format, **kwargs)
+
+        try:
+            # CRITICAL: Use litellm.acompletion (with an 'a')
+            raw_response = await litellm.acompletion(**payload)
+
+            llm_response = LLMCompletionResponse(**raw_response.model_dump())
+
+            if response_format is not None and llm_response.content:
+                llm_response.formatted_response = self._parse_json(
+                    llm_response.content, response_format
+                )
+
+            return llm_response
+
+        except Exception as e:
+            logger.error(f"LiteLLM async call failed: {str(e)}")
+            raise
+
     def _build_args(
         self,
         messages: LLMCompletionMessagesParam,

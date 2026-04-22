@@ -42,7 +42,7 @@ class ChunkRepository(VectorRepository):
             data.append(chunk.model_dump())
 
         with self._write_lock:
-            self._table.add(data)
+            await self._table.add(data)
 
     async def search_chunks(
         self, query_vector: List[float], book_id: str, path_id: str, top_k: int = 5
@@ -65,10 +65,12 @@ class ChunkRepository(VectorRepository):
 
     async def get_chunks_by_book(self, book_id: str) -> List[TextChunk]:
         """Retrieve all chunks for a book using LanceDB's native scanner."""
-        results = self._table.query().where(f"book_id = '{book_id}'").to_list()
+        results = await self._table.query().where(f"book_id = '{book_id}'").to_list()
         return [TextChunk(**r) for r in results]
 
     async def get_chunks_by_section(self, section_id: str) -> List[TextChunk]:
         """Retrieve all chunks for a specific section."""
-        results = self._table.query().where(f"section_id = '{section_id}'").to_list()
+        results = (
+            await self._table.query().where(f"section_id = '{section_id}'").to_list()
+        )
         return [TextChunk(**r) for r in results]

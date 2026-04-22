@@ -30,7 +30,13 @@ class DatabaseContext:
 
     def __init__(self, connection_url: str):
         # It manages connections, timeouts, and the pool size.
-        self.engine = create_async_engine(connection_url, pool_size=10, max_overflow=20)
+        self.engine = create_async_engine(
+            connection_url,
+            pool_size=30,
+            max_overflow=50,
+            pool_timeout=30,
+            pool_recycle=3600,
+        )
 
         # This is your 'Session Factory' (Connection Factory)
         self.session_factory = async_sessionmaker(
