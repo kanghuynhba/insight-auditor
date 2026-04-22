@@ -59,7 +59,7 @@ class PdfLoader(Loader):
             title = self._detect_title(doc, path)
             raw_entries = self._extract_entries(doc)
 
-        book_id = _generate_toc_hash(title, raw_entries)
+        book_id = self._generate_toc_hash(title, raw_entries)
         chapters = self._build_chapters(raw_entries, book_id)
 
         # Instantiate the frozen Book model

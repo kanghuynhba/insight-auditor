@@ -15,7 +15,7 @@ async def embed_chunks(
         batch = chunks[i : i + batch_size]
         texts = [c.text for c in batch]
 
-        response = await embedder.embed(input=texts)
+        response = await embedder.async_embed(input=texts)
         vectors = response.embeddings
 
         for chunk, vector in zip(batch, vectors):
