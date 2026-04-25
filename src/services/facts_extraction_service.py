@@ -2,6 +2,8 @@ import asyncio
 import logging
 from typing import Any, List
 
+from src.core.text_chunk import TextChunk
+from src.infrastructure.persistence.base_repository import Repository
 from src.core.atomic_fact import AtomicFact
 from src.core.models import Section
 from src.index.operations.extract_facts import extract_facts
@@ -22,13 +24,15 @@ class FactsExtractionService:
     def __init__(
         self,
         llm: LLMCompletion,
-        db_context: DatabaseContext,
+        section_repo: Repository[Section],
+        fact_repo: Repository[AtomicFact],
         vector_repo: VectorRepository,
         concurrency: int = 5,
     ):
         self.llm = llm
-        self.db_context = db_context
         self.vector_repo = vector_repo
+        self.section_repo = section_repo
+        self.fact_repo = fact_repo
         self.semaphore = asyncio.Semaphore(concurrency)
 
     async def extract_facts_for_book(self, book_id: str) -> List[AtomicFact]:
@@ -38,9 +42,7 @@ class FactsExtractionService:
         logger.info(f"Workflow started: extract_facts_for_book (ID: {book_id})")
 
         # 1. Fetch only IDs to keep the 'orchestrator' light
-        async with self.db_context.get_session() as session:
-            section_repo = self.db_context.get_repository(session, Section)
-            section_ids = await section_repo.get_ids_by_book(book_id)
+        section_ids = await self.section_repo.get_ids_by_book(book_id)
 
         if not section_ids:
             logger.warning(f"No sections found for book {book_id}.")
@@ -72,14 +74,12 @@ class FactsExtractionService:
     async def _process_chunk(self, chunk: TextChunk) -> List[AtomicFact]:
         async with self.semaphore:
             # 1. IMMEDIATE CHECK: Open a quick session just to check existence
-            async with self.db_context.get_session() as session:
-                fact_repo = self.db_context.get_repository(session, AtomicFact)
-                existing_facts = await fact_repo.find_by_chunk(chunk.id)
+            existing_facts = await self.fact_repo.find_by_chunk(chunk.id)
 
-                if existing_facts:
-                    # Log at INFO level so you can see the skipped chunks clearly
-                    logger.info(f"SKIPPING: Chunk {chunk.id[:8]} (Already processed)")
-                    return existing_facts
+            if existing_facts:
+                # Log at INFO level so you can see the skipped chunks clearly
+                logger.info(f"SKIPPING: Chunk {chunk.id[:8]} (Already processed)")
+                return existing_facts
 
             # 2. LLM CALL: Only reached if the chunk is NOT in the database
             # This is where the tokens are spent.
@@ -92,24 +92,10 @@ class FactsExtractionService:
 
             # 3. PERSISTENCE: Open a new session to save the new facts
             if facts:
-                async with self.db_context.get_session() as session:
-                    session.add_all(facts)
-                    await session.commit()
-                    logger.info(f"SAVED: Chunk {chunk.id[:8]} ({len(facts)} facts)")
+                await self.fact_repo.save_all(facts)
+                logger.info(f"SAVED: Chunk {chunk.id[:8]} ({len(facts)} facts)")
 
             return facts
-
-    async def _run_llm_extraction(self, section: Section) -> List[AtomicFact]:
-        """Calls extraction operation with thread offloading."""
-        return await asyncio.to_thread(
-            extract_atomic_facts,
-            self.llm,
-            ATOMIC_FACT_SYSTEM,
-            ATOMIC_FACT_USER,
-            section.raw_text,
-            section.path_id,
-            section.id,
-        )
 
     @staticmethod
     def _aggregate(results: list) -> List[AtomicFact]:

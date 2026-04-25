@@ -1,7 +1,6 @@
-import json
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import Any, List, Optional
 
-from pydantic import ConfigDict, ValidationError, field_validator
+from pydantic import ConfigDict, field_validator
 from sqlalchemy import JSON, TEXT
 from sqlmodel import Column, Field, Relationship
 from src.core.entity import Entity
@@ -12,7 +11,7 @@ TIER_WEIGHTS = {Tier.CRITICAL: 3, Tier.IMPORTANT: 2, Tier.NUANCE: 1}
 
 
 class AtomicFact(Entity, table=True):
-    __tablename__ = "atomic_facts"
+    __tablename__ = "atomic_fact"
 
     section_id: str = Field(foreign_key="sections.id", index=True)
     chunk_id: str = Field(index=True)

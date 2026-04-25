@@ -1,6 +1,8 @@
 # src/core/enums.py
-from enum import IntEnum
+from enum import Enum, IntEnum
 from typing import Union
+
+from pydantic import BaseModel
 
 
 class Tier(IntEnum):
@@ -34,3 +36,17 @@ class Tier(IntEnum):
     def to_rank(self) -> int:
         """Returns the integer rank (1, 2, 3) used in LLM prompts."""
         return self.value
+
+
+class FactStatus(str, Enum):
+    FOUND = "found"
+    PARTIAL = "partial"
+    MISSING = "missing"
+    CONTRADICTED = "contradicted"
+
+
+class FactValidation(BaseModel):
+    fact_id: str
+    status: FactStatus
+    evidence: str
+    confidence: float

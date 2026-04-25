@@ -2,12 +2,10 @@
 import hashlib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import fitz
 from src.core.config import Settings
-from src.core.entity import Entity
-from src.core.helpers import new_id
 from src.core.models import Book, Chapter, Section
 
 from .file_type import FileType

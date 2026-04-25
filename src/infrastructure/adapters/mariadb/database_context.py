@@ -6,6 +6,12 @@ from typing import Dict, Type, TypeVar
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
+from src.core.fact_validation import FactValidation
+from src.infrastructure.persistence.fact_validation_repo import FactValidationRepository
+from src.core.audit import AuditReport
+from src.core.summary import Summary
+from src.infrastructure.persistence.audit_report_repo import AuditReportRepository
+from infrastructure.persistence.summary_repo import SummaryRepository
 from src.core.atomic_fact import AtomicFact
 
 # Import Entities
@@ -26,6 +32,9 @@ class DatabaseContext:
         Chapter: ChapterRepository,
         Section: SectionRepository,
         AtomicFact: AtomicFactRepository,
+        Summary: SummaryRepository,
+        AuditReport: AuditReportRepository,
+        FactValidation: FactValidationRepository,
     }
 
     def __init__(self, connection_url: str):

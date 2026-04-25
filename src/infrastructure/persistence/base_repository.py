@@ -1,4 +1,5 @@
 # src/infrastructure/persistence/base_repository.py
+from abc import abstractmethod
 from typing import Any, Generic, List, Optional, Type, TypeVar
 
 from sqlmodel import select
@@ -18,6 +19,19 @@ class Repository(Generic[T]):
         self.session.add(entity)
         return entity
 
+    async def save_all(self, entities: List[T]) -> List[T]:
+        """
+        Persists a list of entities in a single batch.
+        Useful for saving AtomicFacts extracted from a chunk.
+        """
+        if not entities:
+            return []
+
+        self.session.add_all(entities)
+        # Note: We do not commit here because the session lifecycle
+        # is managed by the DatabaseContext.get_session() context manager.
+        return entities
+
     async def find_by_id(self, entity_id: Any) -> Optional[T]:
         """Generic fetch by ID."""
         return await self.session.get(self.entity_class, entity_id)
@@ -33,3 +47,11 @@ class Repository(Generic[T]):
         entity = await self.find_by_id(entity_id)
         if entity:
             await self.session.delete(entity)
+
+    @abstractmethod
+    async def get_ids_by_book(self, book_id: str) -> List[Any]:
+        pass
+
+    @abstractmethod
+    async def find_by_chunk(self, chunk_id: str) -> List[Any]:
+        pass
