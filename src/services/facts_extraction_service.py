@@ -57,10 +57,19 @@ class FactsExtractionService:
             results = await asyncio.gather(*tasks, return_exceptions=True)
             all_facts = self._aggregate(results)
 
-            # Update section status to DONE
+            failed = any(isinstance(r, Exception) for r in results)
             section = await self.section_repo.find_by_id(section_id)
+
+            # Update section status to DONE
             if section:
-                section.extraction_status = ExtractionStatus.DONE
+
+                failed = any(isinstance(r, Exception) for r in results)
+
+                if failed:
+                    section.extraction_status = ExtractionStatus.ERROR
+                else:
+                    section.extraction_status = ExtractionStatus.DONE
+
                 await self.section_repo.save(section)
                 await self.section_repo.session.commit()
 
@@ -76,7 +85,7 @@ class FactsExtractionService:
             if section:
                 section.extraction_status = ExtractionStatus.ERROR
                 await self.section_repo.save(section)
-                await self.section_repo.session.commit()
+                await self.section_repo.session.rollback()
             # Update task if present
             if self.task_service and task_id:
                 await self.task_service.error(task_id, exc=e)
@@ -96,6 +105,12 @@ class FactsExtractionService:
             # If forced, we could delete old facts for this chunk to avoid duplicates
             # For simplicity, we'll just extract new ones; duplicates will be avoided by saving only new ones.
             # But if you want to replace, call fact_repo.delete_by_chunk(chunk.id) here.
+
+            # if force:
+            #     existing = await self.fact_repo.find_by_chunk(chunk.id)
+            #     for fact in existing:
+            #         await self.fact_repo.delete(fact.id)   # or a bulk delete method
+            #     await self.fact_repo.session.flush()
 
             facts = await extract_facts(
                 chunk=chunk,

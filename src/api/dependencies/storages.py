@@ -58,5 +58,5 @@ def get_fact_validation_repo(
     return FactValidationResultRepository(session)
 
 
-async def get_task_repo(session: AsyncSession = Depends(get_session)) -> TaskRepository:
+def get_task_repo(session: AsyncSession = Depends(get_session)) -> TaskRepository:
     return TaskRepository(session)

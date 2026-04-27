@@ -1,8 +1,8 @@
 # validate_facts function
 
 import logging
-from litellm import json
 from src.core.atomic_fact import AtomicFact
+import json
 from src.core.enums import FactStatus
 from src.core.fact_validation import FactValidationResult
 from src.core.summary import Summary
