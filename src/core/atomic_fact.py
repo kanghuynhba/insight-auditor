@@ -3,9 +3,10 @@ from typing import Any, List, Optional
 from pydantic import ConfigDict, field_validator
 from sqlalchemy import JSON, TEXT
 from sqlmodel import Column, Field, Relationship
+
+# from src.core.fact_validation import FactValidationResult
 from src.core.entity import Entity
 from src.core.enums import Tier
-from src.core.models import Section
 
 TIER_WEIGHTS = {Tier.CRITICAL: 3, Tier.IMPORTANT: 2, Tier.NUANCE: 1}
 
@@ -13,7 +14,7 @@ TIER_WEIGHTS = {Tier.CRITICAL: 3, Tier.IMPORTANT: 2, Tier.NUANCE: 1}
 class AtomicFact(Entity, table=True):
     __tablename__ = "atomic_fact"
 
-    section_id: str = Field(foreign_key="sections.id", index=True)
+    section_id: str = Field(foreign_key="section.id", index=True)
     chunk_id: str = Field(index=True)
     path_id: str = Field(index=True)
     point: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
@@ -30,6 +31,13 @@ class AtomicFact(Entity, table=True):
 
     # Relationships
     section: "Section" = Relationship(back_populates="atomic_facts")
+    # # why?
+    # # maybe in the future you want to gather list of fact validation
+    # # that the user most likely to fail or missing from a book or multiple books
+    # validations: List["FactValidationResult"] = Relationship(
+    #     back_populates="atomic_fact",
+    #     sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    # )
 
     @property
     def weight(self) -> int:

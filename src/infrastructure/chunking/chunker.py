@@ -2,7 +2,7 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
-from core.models import Section
+from src.core.models import Section
 from src.core.config import Settings
 from src.core.text_chunk import TextChunk
 

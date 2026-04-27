@@ -1,9 +1,10 @@
 from typing import List, Optional
 
-from pydantic import ConfigDict, field_validator, model_validator
-from sqlalchemy import TEXT, Column, ForeignKey
+from pydantic import field_validator
+from sqlalchemy import Column, ForeignKey
 from sqlalchemy.dialects.mysql import MEDIUMTEXT
 from sqlmodel import Field, Relationship
+from src.core.enums import ExtractionStatus
 from src.core.atomic_fact import AtomicFact
 from src.core.summary import Summary
 from src.core.entity import Entity
@@ -11,7 +12,7 @@ from src.infrastructure.loaders.file_type import FileType
 
 
 class Book(Entity, table=True):
-    __tablename__ = "book"
+    __tablename__: str = "book"
     title: str = Field(index=True)
     author: Optional[str] = None
     source_format: FileType
@@ -36,7 +37,7 @@ class Book(Entity, table=True):
 
 
 class Chapter(Entity, table=True):
-    __tablename__ = "chapter"
+    __tablename__: str = "chapter"
     title: str
     path_id: str = Field(index=True)
     index: int = Field(default=0)
@@ -58,7 +59,7 @@ class Chapter(Entity, table=True):
 
 
 class Section(Entity, table=True):
-    __tablename__ = "section"
+    __tablename__: str = "section"
     path_id: str = Field(index=True)
     parent_path_id: Optional[str] = None
     title: str
@@ -73,6 +74,10 @@ class Section(Entity, table=True):
 
     raw_text: Optional[str] = Field(
         default=None, sa_column=Column(MEDIUMTEXT, nullable=True)
+    )
+
+    extraction_status: ExtractionStatus = Field(
+        default=ExtractionStatus.NONE, nullable=False
     )
 
     @property

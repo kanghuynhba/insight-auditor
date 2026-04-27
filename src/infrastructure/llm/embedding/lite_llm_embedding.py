@@ -22,7 +22,7 @@ class LiteLLMEmbedding(LLMEmbedding):
 
     def __init__(
         self,
-        config=ModelConfig,
+        config: ModelConfig,
         **kwargs: Any,
     ) -> None:
         super().__init__(config, **kwargs)

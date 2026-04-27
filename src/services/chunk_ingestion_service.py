@@ -20,7 +20,7 @@ class ChunkIngestionService:
         chunker: Chunker,
         embedder: LLMEmbedding,
         vector_repo: VectorRepository,
-        embedding_batch_size: int = 100,
+        embedding_batch_size: int = 40,
         max_workers: int = 8,
     ):
         self.chunker = chunker

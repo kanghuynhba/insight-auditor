@@ -28,3 +28,4 @@ pymupdf>=1.23.0
 # Testing (Simplified for 3.12)
 pytest
 pytest-asyncio
+python-multipart

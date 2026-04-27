@@ -6,6 +6,8 @@ from pathlib import Path
 from pydantic import HttpUrl, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from src.infrastructure.llm.types import ModelConfig
+
 
 class Settings(BaseSettings):
     """
@@ -13,18 +15,32 @@ class Settings(BaseSettings):
     environment variables or a .env file.
     """
 
-    # Azure OpenAI configuration
-    azure_openai_api_key: SecretStr
-    azure_openai_endpoint: HttpUrl
-    openai_api_version: str
+    # Github models configuration
+    github_endpoint: HttpUrl
+    github_completion_api_key: SecretStr
     generative_model_name: str
+    # api_version: str
+    # registry_name: str
+    # api_type: str
+    # github_api_version: str = "2026-03-10"
+
+    github_embedding_api_key: SecretStr
     embedding_model_name: str
-    registry_name: str
-    api_type: str
+
+    # # Azure OpenAI configuration
+    # azure_openai_api_key: SecretStr
+    # azure_openai_endpoint: HttpUrl
+    # openai_api_version: str
+    # generative_model_name: str
+    # embedding_model_name: str
+    # registry_name: str
+    # api_type: str
 
     # MariaDB / SQL Configuration
     # Example: mysql+aiomysql://user:password@localhost:3306/insight_auditor
-    mariadb_url: str = "mysql+aiomysql://root:password@localhost:3306/insight_auditor"
+    mariadb_url: str = (
+        "mysql+aiomysql://root:password@localhost:3306/insight_auditor_db"
+    )
 
     # Storage path
     lance_db_path: Path = Path("./lancedb")
@@ -59,21 +75,15 @@ class Settings(BaseSettings):
             )
         return v
 
-    @field_validator("azure_openai_endpoint", mode="before")
-    @classmethod
-    def clean_openai_endpoint(cls, v: str) -> str:
-        return str(v).split("/openai")[0].rstrip("/")
-
     @property
     def generative_model(self) -> ModelConfig:
         """
         Returns a dictionary formatted for litellm.completion()
         """
         return {
-            "model": f"azure/{self.generative_model_name}",
-            "api_key": self.azure_openai_api_key.get_secret_value(),
-            "api_base": str(self.azure_openai_endpoint),
-            "api_version": self.openai_api_version,
+            "model": f"{self.generative_model_name}",
+            "api_key": self.github_completion_api_key.get_secret_value(),
+            "api_base": str(self.github_endpoint),
         }
 
     @property
@@ -82,10 +92,9 @@ class Settings(BaseSettings):
         Returns a dictionary formatted for litellm.embedding()
         """
         return {
-            "model": f"azure/{self.embedding_model_name}",
-            "api_key": self.azure_openai_api_key.get_secret_value(),
-            "api_base": str(self.azure_openai_endpoint),
-            "api_version": self.openai_api_version,
+            "model": f"{self.embedding_model_name}",
+            "api_key": self.github_embedding_api_key.get_secret_value(),
+            "api_base": str(self.github_endpoint),
         }
 
 

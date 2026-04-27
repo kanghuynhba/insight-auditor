@@ -43,7 +43,6 @@ async def extract_facts(
             {"role": "user", "content": user_message},
         ],
         response_format=List[Dict[str, Any]],
-        temperature=0.0,
     )
 
     if not response.formatted_response:

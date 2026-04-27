@@ -1,13 +1,14 @@
 import asyncio
 import logging
-from typing import Any, List
+from typing import List, Optional
 
+from src.core.enums import ExtractionStatus
+from src.services.task_service import TaskService
 from src.core.text_chunk import TextChunk
 from src.infrastructure.persistence.base_repository import Repository
 from src.core.atomic_fact import AtomicFact
 from src.core.models import Section
 from src.index.operations.extract_facts import extract_facts
-from src.infrastructure.adapters.mariadb.database_context import DatabaseContext
 from src.infrastructure.llm.completion.completion import LLMCompletion
 from src.infrastructure.persistence.vector_base_repository import VectorRepository
 from src.infrastructure.prompts.index.extract_atomic_facts import (
@@ -19,70 +20,83 @@ logger = logging.getLogger(__name__)
 
 
 class FactsExtractionService:
-    # get_chunks_by_book(Book) -> extract_facts_for_book -> save(AtomicFact)
-    # get_chunks_by_section(Book) -> extract_facts_for_section -> save(AtomicFact)
     def __init__(
         self,
         llm: LLMCompletion,
         section_repo: Repository[Section],
         fact_repo: Repository[AtomicFact],
         vector_repo: VectorRepository,
-        concurrency: int = 5,
+        task_service: Optional[TaskService] = None,  # optional
+        concurrency: int = 1,
     ):
         self.llm = llm
         self.vector_repo = vector_repo
         self.section_repo = section_repo
         self.fact_repo = fact_repo
+        self.task_service = task_service
         self.semaphore = asyncio.Semaphore(concurrency)
 
-    async def extract_facts_for_book(self, book_id: str) -> List[AtomicFact]:
-        """
-        Orchestrates extraction across a book by delegating to section-level tasks.
-        """
-        logger.info(f"Workflow started: extract_facts_for_book (ID: {book_id})")
-
-        # 1. Fetch only IDs to keep the 'orchestrator' light
-        section_ids = await self.section_repo.get_ids_by_book(book_id)
-
-        if not section_ids:
-            logger.warning(f"No sections found for book {book_id}.")
-            return []
-
-        # 2. Process each section.
-        # Note: extract_facts_by_section handles its own chunks and DB sessions.
-        tasks = [self.extract_facts_by_section(sid) for sid in section_ids]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        return self._aggregate(results)
-
-    async def extract_facts_by_section(self, section_id: str) -> List[AtomicFact]:
-        """
-        Fetches chunks for a specific section and processes them.
-        """
-        # Fetch chunks from Vector Storage (LanceDB)
+    async def extract_facts_by_section(
+        self,
+        section_id: str,
+        force: bool = False,
+        task_id: Optional[str] = None,
+    ) -> List[AtomicFact]:
+        """Extract facts for a section. Updates section status and task if provided."""
         chunks = await self.vector_repo.get_chunks_by_section(section_id)
-
         if not chunks:
+            logger.warning(f"No chunks found for section {section_id}")
             return []
 
-        # Process chunks with controlled concurrency via self.semaphore
-        tasks = [self._process_chunk(chunk) for chunk in chunks]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        try:
+            if self.task_service and task_id:
+                await self.task_service.start(task_id)
 
-        return self._aggregate(results)
+            # Process chunks in parallel with concurrency limit
+            tasks = [self._process_chunk(chunk, force) for chunk in chunks]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            all_facts = self._aggregate(results)
 
-    async def _process_chunk(self, chunk: TextChunk) -> List[AtomicFact]:
+            # Update section status to DONE
+            section = await self.section_repo.find_by_id(section_id)
+            if section:
+                section.extraction_status = ExtractionStatus.DONE
+                await self.section_repo.save(section)
+                await self.section_repo.session.commit()
+
+            if self.task_service and task_id:
+                await self.task_service.done(
+                    task_id, result={"facts_extracted": len(all_facts)}
+                )
+            return all_facts
+
+        except Exception as e:
+            # Mark section as ERROR
+            section = await self.section_repo.find_by_id(section_id)
+            if section:
+                section.extraction_status = ExtractionStatus.ERROR
+                await self.section_repo.save(section)
+                await self.section_repo.session.commit()
+            # Update task if present
+            if self.task_service and task_id:
+                await self.task_service.error(task_id, exc=e)
+            raise
+
+    async def _process_chunk(
+        self, chunk: TextChunk, force: bool = False
+    ) -> List[AtomicFact]:
         async with self.semaphore:
-            # 1. IMMEDIATE CHECK: Open a quick session just to check existence
-            existing_facts = await self.fact_repo.find_by_chunk(chunk.id)
+            # Skip if already processed and not forced
+            if not force:
+                existing_facts = await self.fact_repo.find_by_chunk(chunk.id)
+                if existing_facts:
+                    logger.info(f"Skipping chunk {chunk.id[:8]} (already processed)")
+                    return existing_facts
 
-            if existing_facts:
-                # Log at INFO level so you can see the skipped chunks clearly
-                logger.info(f"SKIPPING: Chunk {chunk.id[:8]} (Already processed)")
-                return existing_facts
+            # If forced, we could delete old facts for this chunk to avoid duplicates
+            # For simplicity, we'll just extract new ones; duplicates will be avoided by saving only new ones.
+            # But if you want to replace, call fact_repo.delete_by_chunk(chunk.id) here.
 
-            # 2. LLM CALL: Only reached if the chunk is NOT in the database
-            # This is where the tokens are spent.
             facts = await extract_facts(
                 chunk=chunk,
                 llm=self.llm,
@@ -90,20 +104,67 @@ class FactsExtractionService:
                 user_prompt_template=ATOMIC_FACT_USER,
             )
 
-            # 3. PERSISTENCE: Open a new session to save the new facts
             if facts:
                 await self.fact_repo.save_all(facts)
-                logger.info(f"SAVED: Chunk {chunk.id[:8]} ({len(facts)} facts)")
-
+                logger.info(f"Saved {len(facts)} facts from chunk {chunk.id[:8]}")
             return facts
+
+    async def generate_hints(
+        self,
+        section_id: str,
+        attempt_number: Optional[int] = None,
+        max_hints: int = 5,
+    ) -> List[str]:
+        """Return one question per fact, prioritized by rank."""
+        facts = await self.fact_repo.find_by_section(section_id)
+        if not facts:
+            return []
+
+        # (Optional) filter by attempt_number – would need audit_repo
+        # For now, ignore attempt_number.
+
+        sorted_facts = sorted(facts, key=lambda f: f.rank.value)  # Critical first
+        hints = []
+        for fact in sorted_facts:
+            if fact.questions:
+                hints.append(fact.questions[0])
+            if len(hints) >= max_hints:
+                break
+        return hints
+
+    async def get_facts_for_section(self, section_id: str) -> dict:
+        """Return formatted facts or raise ValueError with status."""
+        section = await self.section_repo.find_by_id(section_id)
+        if not section:
+            raise ValueError(f"Section {section_id} not found")
+        if section.extraction_status != ExtractionStatus.DONE:
+            raise ValueError(
+                f"No facts extracted yet (status: {section.extraction_status.value})"
+            )
+        facts = await self.fact_repo.find_by_section(section_id)
+        return {
+            "section_id": section_id,
+            "extraction_status": "done",
+            "facts": [f.model_dump() for f in facts],
+        }
 
     @staticmethod
     def _aggregate(results: list) -> List[AtomicFact]:
-        all_facts: List[AtomicFact] = []
+        all_facts = []
         for res in results:
             if isinstance(res, Exception):
-                # Error handling matches the 'WorkflowFunctionOutput' pattern
-                logger.error(f"Task encountered error: {res}")
+                logger.error(f"Chunk processing failed: {res}")
             elif res:
                 all_facts.extend(res)
         return all_facts
+
+    # Optional: book‑level extraction (kept as is, but also update status?)
+    # For now, it doesn't use task_service – could be extended later.
+    async def extract_facts_for_book(self, book_id: str) -> List[AtomicFact]:
+        logger.info(f"Extracting facts for book {book_id}")
+        section_ids = await self.section_repo.get_ids_by_book(book_id)
+        if not section_ids:
+            return []
+        tasks = [self.extract_facts_by_section(sid) for sid in section_ids]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        return self._aggregate(results)

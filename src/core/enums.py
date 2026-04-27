@@ -2,8 +2,6 @@
 from enum import Enum, IntEnum
 from typing import Union
 
-from pydantic import BaseModel
-
 
 class Tier(IntEnum):
     CRITICAL = 1
@@ -45,8 +43,15 @@ class FactStatus(str, Enum):
     CONTRADICTED = "contradicted"
 
 
-class FactValidation(BaseModel):
-    fact_id: str
-    status: FactStatus
-    evidence: str
-    confidence: float
+class ExtractionStatus(str, Enum):
+    NONE = "NONE"  # uppercase to match DB enum
+    PENDING = "PENDING"
+    DONE = "DONE"
+    ERROR = "ERROR"
+
+
+class TaskStatus(str, Enum):
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    DONE = "DONE"
+    ERROR = "ERROR"

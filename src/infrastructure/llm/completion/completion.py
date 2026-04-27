@@ -1,13 +1,11 @@
 # src/infrastructure/llm/completion/completion.py
 
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator, Iterator
 from typing import TYPE_CHECKING, Any, Unpack
 
 if TYPE_CHECKING:
     from llm.types import (
         LLMCompletionArgs,
-        LLMCompletionChunk,
         LLMCompletionResponse,
         ModelConfig,
         ResponseFormat,
@@ -31,7 +29,7 @@ class LLMCompletion(ABC):
         self,
         /,
         **kwargs: Unpack["LLMCompletionArgs[ResponseFormat]"],
-    ) -> LLMEmbeddingResponse:
+    ) -> LLMCompletionResponse:
         """Sync completion method"""
         pass
 

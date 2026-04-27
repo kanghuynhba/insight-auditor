@@ -1,8 +1,6 @@
 import logging
 from pathlib import Path
 from typing import Dict
-
-from infrastructure.persistence.base_repository import Repository
 from src.infrastructure.persistence.base_repository import Repository
 from src.core.models import Book
 from src.infrastructure.loaders.file_type import FileType
@@ -42,4 +40,6 @@ class BookExtractionService:
             )
             return existing_book
 
-        return await self.book_repo.save(book)
+        saved_book = await self.book_repo.save(book)
+        await self.book_repo.session.commit()
+        return saved_book
