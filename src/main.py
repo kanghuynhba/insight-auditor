@@ -8,7 +8,7 @@ logging.basicConfig(
 from fastapi import FastAPI
 from src.core.config import get_settings
 from src.infrastructure.adapters.mariadb.database_context import DatabaseContext
-from src.api.routers import books, sections
+from src.api.routers import books, sections, tasks
 
 # audit router is deprecated; keep only if needed for backward compatibility
 # from src.api.routers import audit
@@ -20,6 +20,7 @@ app = FastAPI(title="Insight Auditor API", version="3.0")
 # Register routers
 app.include_router(books.router)
 app.include_router(sections.router)  # new sections router
+app.include_router(tasks.router)  # new sections router
 
 # Optionally keep audit router for legacy endpoints (e.g., /audit/...)
 # but mark as deprecated. For now, we'll keep it but you can remove later.
