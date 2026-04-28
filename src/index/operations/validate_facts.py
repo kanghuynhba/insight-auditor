@@ -18,7 +18,7 @@ from src.infrastructure.prompts.index.validate_summary import (
     _PREVIOUS_ATTEMPT_BLOCK_EXAMPLE,
 )
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 MIN_WORD_COUNT = 50
 
@@ -59,24 +59,6 @@ async def validate_facts(
     previous_summary: Optional[Summary] = None,
     previous_report: Optional[AuditReport] = None,
 ) -> list[FactValidationResult]:
-
-    # --- Hard guard: reject under-length summaries before touching the LLM ---
-    word_count = len(summary.split())
-    if word_count < MIN_WORD_COUNT:
-        logger.info(
-            f"Summary rejected: {word_count} words (minimum {MIN_WORD_COUNT}). "
-            "Returning all facts as Missing."
-        )
-        return [
-            FactValidationResult(
-                atomic_fact_id=f.id,
-                status=FactStatus.MISSING,
-                evidence="",
-                confidence=1.0,
-                improved=None,
-            )
-            for f in facts
-        ]
 
     # --- Build the attempt context block ---
     is_first_attempt = not (previous_summary and previous_report)

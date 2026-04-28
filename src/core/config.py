@@ -36,11 +36,7 @@ class Settings(BaseSettings):
     # registry_name: str
     # api_type: str
 
-    # MariaDB / SQL Configuration
-    # Example: mysql+aiomysql://user:password@localhost:3306/insight_auditor
-    mariadb_url: str = (
-        "mysql+aiomysql://root:password@localhost:3306/insight_auditor_db"
-    )
+    mariadb_url: str
 
     # Storage path
     lance_db_path: Path = Path("./lancedb")

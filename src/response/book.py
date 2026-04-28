@@ -2,13 +2,13 @@ from typing import List, Optional
 from src.response.base import BaseSchema
 
 
-class ChapterSummary(BaseSchema):
-    """Used in upload response and book list (lightweight)."""
-
+class TocNodeResponse(BaseSchema):
     id: str
     title: str
-    path_id: str
-    section_count: int
+    level: int
+    section_id: Optional[str]
+    order: int
+    children: List["TocNodeResponse"] = []
 
 
 class BookUploadResponse(BaseSchema):
@@ -19,7 +19,7 @@ class BookUploadResponse(BaseSchema):
     author: Optional[str]
     source_format: str
     total_chapters: int
-    chapters: List[ChapterSummary]  # summary, not full hierarchy
+    toc: List[TocNodeResponse]
 
 
 class BookSummary(BaseSchema):
@@ -40,7 +40,7 @@ class SectionResponse(BaseSchema):
     path_id: str
     level: int
     word_count: int
-    extraction_status: str  # "NONE", "PENDING", "DONE", "ERROR"
+    extraction_status: str
 
 
 class ChapterDetailResponse(BaseSchema):
@@ -60,4 +60,4 @@ class BookDetailResponse(BaseSchema):
     title: str
     author: Optional[str]
     source_format: str
-    chapters: List[ChapterDetailResponse]
+    toc: List[TocNodeResponse]

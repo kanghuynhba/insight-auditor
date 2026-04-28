@@ -1,13 +1,13 @@
 import asyncio
 import logging
 from typing import List, Optional
-
+from core.exceptions import ExtractionNotReadyError
 from src.core.enums import ExtractionStatus
 from src.services.task_service import TaskService
 from src.core.text_chunk import TextChunk
 from src.infrastructure.persistence.base_repository import Repository
 from src.core.atomic_fact import AtomicFact
-from src.core.models import Section
+from src.core.section import Section
 from src.index.operations.extract_facts import extract_facts
 from src.infrastructure.llm.completion.completion import LLMCompletion
 from src.infrastructure.persistence.vector_base_repository import VectorRepository
@@ -26,7 +26,7 @@ class FactsExtractionService:
         section_repo: Repository[Section],
         fact_repo: Repository[AtomicFact],
         vector_repo: VectorRepository,
-        task_service: Optional[TaskService] = None,  # optional
+        task_service: Optional[TaskService] = None,
         concurrency: int = 1,
     ):
         self.llm = llm
@@ -42,7 +42,6 @@ class FactsExtractionService:
         force: bool = False,
         task_id: Optional[str] = None,
     ) -> List[AtomicFact]:
-        """Extract facts for a section. Updates section status and task if provided."""
         chunks = await self.vector_repo.get_chunks_by_section(section_id)
         if not chunks:
             logger.warning(f"No chunks found for section {section_id}")
@@ -52,24 +51,19 @@ class FactsExtractionService:
             if self.task_service and task_id:
                 await self.task_service.start(task_id)
 
-            # Process chunks in parallel with concurrency limit
             tasks = [self._process_chunk(chunk, force) for chunk in chunks]
             results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # B-07: compute failed once
+            failed = any(isinstance(r, Exception) for r in results)
             all_facts = self._aggregate(results)
 
-            failed = any(isinstance(r, Exception) for r in results)
             section = await self.section_repo.find_by_id(section_id)
-
-            # Update section status to DONE
             if section:
-
-                failed = any(isinstance(r, Exception) for r in results)
-
                 if failed:
                     section.extraction_status = ExtractionStatus.ERROR
                 else:
                     section.extraction_status = ExtractionStatus.DONE
-
                 await self.section_repo.save(section)
                 await self.section_repo.session.commit()
 
@@ -80,13 +74,13 @@ class FactsExtractionService:
             return all_facts
 
         except Exception as e:
-            # Mark section as ERROR
+            # B-03: rollback first, then update section status in a clean state
+            await self.section_repo.session.rollback()
             section = await self.section_repo.find_by_id(section_id)
             if section:
                 section.extraction_status = ExtractionStatus.ERROR
                 await self.section_repo.save(section)
-                await self.section_repo.session.rollback()
-            # Update task if present
+                await self.section_repo.session.commit()
             if self.task_service and task_id:
                 await self.task_service.error(task_id, exc=e)
             raise
@@ -95,22 +89,16 @@ class FactsExtractionService:
         self, chunk: TextChunk, force: bool = False
     ) -> List[AtomicFact]:
         async with self.semaphore:
-            # Skip if already processed and not forced
-            if not force:
+            # B-01: delete existing facts if forced
+            if force:
+                # Ensure fact_repo has delete_by_chunk method
+                await self.fact_repo.delete_by_chunk(chunk.id)
+                await self.fact_repo.session.flush()
+            else:
                 existing_facts = await self.fact_repo.find_by_chunk(chunk.id)
                 if existing_facts:
                     logger.info(f"Skipping chunk {chunk.id[:8]} (already processed)")
                     return existing_facts
-
-            # If forced, we could delete old facts for this chunk to avoid duplicates
-            # For simplicity, we'll just extract new ones; duplicates will be avoided by saving only new ones.
-            # But if you want to replace, call fact_repo.delete_by_chunk(chunk.id) here.
-
-            # if force:
-            #     existing = await self.fact_repo.find_by_chunk(chunk.id)
-            #     for fact in existing:
-            #         await self.fact_repo.delete(fact.id)   # or a bulk delete method
-            #     await self.fact_repo.session.flush()
 
             facts = await extract_facts(
                 chunk=chunk,
@@ -153,8 +141,9 @@ class FactsExtractionService:
         if not section:
             raise ValueError(f"Section {section_id} not found")
         if section.extraction_status != ExtractionStatus.DONE:
-            raise ValueError(
-                f"No facts extracted yet (status: {section.extraction_status.value})"
+            raise ExtractionNotReadyError(
+                status=section.extraction_status.value,
+                message="No facts extracted yet",
             )
         facts = await self.fact_repo.find_by_section(section_id)
         return {
@@ -175,11 +164,11 @@ class FactsExtractionService:
 
     # Optional: book‑level extraction (kept as is, but also update status?)
     # For now, it doesn't use task_service – could be extended later.
-    async def extract_facts_for_book(self, book_id: str) -> List[AtomicFact]:
-        logger.info(f"Extracting facts for book {book_id}")
-        section_ids = await self.section_repo.get_ids_by_book(book_id)
-        if not section_ids:
-            return []
-        tasks = [self.extract_facts_by_section(sid) for sid in section_ids]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        return self._aggregate(results)
+    # async def extract_facts_for_book(self, book_id: str) -> List[AtomicFact]:
+    #     logger.info(f"Extracting facts for book {book_id}")
+    #     section_ids = await self.section_repo.get_ids_by_book(book_id)
+    #     if not section_ids:
+    #         return []
+    #     tasks = [self.extract_facts_by_section(sid) for sid in section_ids]
+    #     results = await asyncio.gather(*tasks, return_exceptions=True)
+    #     return self._aggregate(results)

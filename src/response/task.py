@@ -8,7 +8,7 @@ class TaskResponse(BaseSchema):
     task_id: str
     type: str
     section_id: str
-    status: str  # "PENDING" | "RUNNING" | "DONE" | "ERROR"
+    status: str  # "PENDING" | "DONE" | "ERROR"
     created_at: datetime
     completed_at: Optional[datetime]
     error: Optional[str]

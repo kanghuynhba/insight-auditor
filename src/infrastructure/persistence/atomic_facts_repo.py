@@ -27,3 +27,8 @@ class AtomicFactRepository(Repository[AtomicFact]):
         statement = select(AtomicFact).where(AtomicFact.chunk_id == chunk_id)
         result = await self.session.exec(statement)
         return list(result.all())
+
+    async def delete_by_chunk(self, chunk_id: str) -> None:
+        """Delete all atomic facts for a given chunk."""
+        stmt = delete(AtomicFact).where(AtomicFact.chunk_id == chunk_id)
+        await self.session.exec(stmt)

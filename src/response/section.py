@@ -11,5 +11,4 @@ class SectionDetailResponse(BaseSchema):
     level: int
     word_count: int
     raw_text: Optional[str]
-    chapter_id: str
     extraction_status: str

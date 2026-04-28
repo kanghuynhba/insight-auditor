@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import tiktoken
 from src.core.config import Settings
+from src.core.section import Section
 from src.core.text_chunk import TextChunk
 
 from .chunker import Chunker
@@ -52,44 +53,41 @@ class NaturalBoundaryChunker(Chunker):
         self._overlap_budget = settings.chunk_overlap
         self._context_budget = settings.chunk_context_size
 
-    # Public API
-    def chunk_section(
-        self,
-        section: Any,  # Using Any to avoid strict circular imports with Section
-    ) -> list[TextChunk]:
+    # src/infrastructure/chunking/natural_boundary_chunker.py (only chunk_section method)
+
+    def chunk_section(self, section: Section) -> list[TextChunk]:
         """
         Chunk the text into natural-boundary chunks using a Section domain model.
-
-        This method leverages the section's hierarchy (Chapter/Book) to provide
-        rich metadata for each chunk.
+        Works with the TableOfContent design: section has book_id and optional _book_title, _chapter_title.
         """
-        # 1. Access required text and metadata from the domain model
+        # 1. Required text and metadata
         raw_text = section.raw_text
 
-        book_title = getattr(
-            getattr(getattr(section, "chapter", {}), "book", {}),
-            "title",
-            "Unknown Book",
-        )
-        chapter_title = getattr(
-            getattr(section, "chapter", {}), "title", "Unknown Chapter"
-        )
+        # Get book_id directly from the section field
+        book_id = getattr(section, "book_id", None)
+        if not book_id:
+            # Fallback for old data (should not happen)
+            book_id = "unknown"
+
+        # Titles: can be pre‑set by the ingestion service to avoid DB queries
+        book_title = getattr(section, "_book_title", "Unknown Book")
+        chapter_title = getattr(section, "_chapter_title", "")
         section_title = getattr(section, "title", "Unknown Section")
 
-        # 2. Pre-process and clean the text
+        # 2. Clean text
         cleaned = self._clean(raw_text)
         if not cleaned:
             return []
 
-        # 3. Hierarchy-aware splitting (Paragraphs -> Sentences)
+        # 3. Parse into sentences
         paragraphs = self._parse(cleaned)
 
-        # 4. Token-bounded accumulation
+        # 4. Accumulate into token‑bounded chunks
         raw_chunks = self._accumulate(paragraphs)
         if not raw_chunks:
             return []
 
-        # 5. Build sliding window overlaps and context expansion
+        # 5. Build overlaps and context windows
         overlapped = self._build_overlapped_texts(raw_chunks)
         context_windows = self._build_context_windows(overlapped)
 
@@ -99,29 +97,28 @@ class NaturalBoundaryChunker(Chunker):
         for i, sentence_list in enumerate(raw_chunks):
             body_text = self._join(sentence_list)
 
-            # Generate overlap from previous chunk for semantic continuity
             overlap_text = ""
             if i > 0 and self._overlap_budget:
                 overlap_text = self._build_overlap_tail(raw_chunks[i - 1])
 
-            # Construct final text with prepended context headers
-            # This helps LLMs maintain global context within small windows
             full_chunk_text = (
                 f"{overlap_text} {body_text}" if overlap_text else body_text
             )
 
-            # Prepend breadcrumb-style metadata
-            header = f"[{book_title} > {chapter_title} > {section_title}]"
+            # Breadcrumb: [Book > Chapter > Section]
+            if chapter_title:
+                header = f"[{book_title} > {chapter_title} > {section_title}]"
+            else:
+                header = f"[{book_title} > {section_title}]"
             full_chunk_text = f"{header}\n{full_chunk_text}"
 
-            # Calculate character-level offsets for pinpointing source text
             start_idx = current_char_offset
             end_idx = start_idx + len(body_text)
 
             chunks.append(
                 TextChunk(
                     id=str(uuid4()),
-                    book_id=section.chapter.book_id,
+                    book_id=book_id,
                     section_id=section.id,
                     path_id=section.path_id,
                     text=full_chunk_text,
@@ -134,7 +131,6 @@ class NaturalBoundaryChunker(Chunker):
                 )
             )
 
-            # Update offset for next chunk (including whitespace/delimiter)
             current_char_offset = end_idx + 1
 
         return chunks

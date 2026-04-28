@@ -2,6 +2,7 @@
 import aiofiles
 import tempfile
 from pathlib import Path
+from fastapi import UploadFile
 
 
 async def save_upload(file: UploadFile) -> Path:

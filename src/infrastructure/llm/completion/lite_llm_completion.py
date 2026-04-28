@@ -151,6 +151,5 @@ class LiteLLMCompletion(LLMCompletion):
             # Fallback: return raw data
             return data
         except Exception as e:
-            raise ValueError(
-                f"Failed to parse LLM response into {response_format.__name__}: {e}"
-            ) from e
+            name = getattr(response_format, "__name__", repr(response_format))
+            raise ValueError(f"Failed to parse LLM response into {name}: {e}") from e

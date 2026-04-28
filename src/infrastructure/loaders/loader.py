@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
 
-from src.core.models import Book
+from src.core.book import Book
 
 
 class Loader(ABC):

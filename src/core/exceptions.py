@@ -19,3 +19,12 @@ class AuditGateError(Exception):
 
 class IngestionError(Exception):
     pass
+
+
+class ExtractionNotReadyError(Exception):
+    """Raised when atomic facts are not ready for a section."""
+
+    def __init__(self, status: str, message: str):
+        self.status = status
+        self.message = message
+        super().__init__(message)

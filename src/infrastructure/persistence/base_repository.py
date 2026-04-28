@@ -47,11 +47,3 @@ class Repository(Generic[T]):
         entity = await self.find_by_id(entity_id)
         if entity:
             await self.session.delete(entity)
-
-    @abstractmethod
-    async def get_ids_by_book(self, book_id: str) -> List[Any]:
-        pass
-
-    @abstractmethod
-    async def find_by_chunk(self, chunk_id: str) -> List[Any]:
-        pass

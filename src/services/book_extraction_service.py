@@ -2,7 +2,7 @@ import logging
 from pathlib import Path
 from typing import Dict
 from src.infrastructure.persistence.base_repository import Repository
-from src.core.models import Book
+from src.core.book import Book
 from src.infrastructure.loaders.file_type import FileType
 from src.infrastructure.loaders.loader import Loader
 

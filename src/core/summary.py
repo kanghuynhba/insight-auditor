@@ -3,7 +3,7 @@ from typing import List, Optional
 from sqlmodel import Field, Relationship
 from src.core.audit import AuditReport
 from src.core.entity import Entity
-from src.core.helpers import now
+from src.core.helpers import now, word_count
 
 
 class Summary(Entity, table=True):
@@ -18,6 +18,4 @@ class Summary(Entity, table=True):
 
     @property
     def word_count(self) -> int:
-        if not self.text:
-            return 0
-        return len(self.text.split())
+        return word_count(self.text)

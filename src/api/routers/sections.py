@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
 from typing import Optional
 
+from src.core.exceptions import ExtractionNotReadyError
 from src.response.section import SectionDetailResponse
-from src.response.audit_repsponse import AuditReportResponse  # note: typo in filename
+from src.response.audit_report import AuditReportResponse  # note: typo in filename
 from src.response.atomic_fact import AtomicFactResponse
 from src.infrastructure.persistence.summary_repo import SummaryRepository
 from src.services.task_service import TaskService
@@ -38,7 +39,6 @@ async def get_section(
         level=section.level,
         word_count=section.word_count,
         raw_text=section.raw_text,
-        chapter_id=section.chapter_id,
         extraction_status=section.extraction_status.value,
     )
 
@@ -100,7 +100,7 @@ async def get_facts(
 ):
     try:
         return await extraction_service.get_facts_for_section(section_id)
-    except ValueError as e:
+    except ExtractionNotReadyError as e:
         if "status:" in str(e):
             status = str(e).split("status: ")[-1].rstrip(")")
             raise HTTPException(
@@ -110,6 +110,7 @@ async def get_facts(
                     "message": "No facts extracted yet",
                 },
             )
+    except ValueError as e:
         raise HTTPException(404, str(e))
 
 

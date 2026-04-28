@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from src.core.config import get_settings
 from src.infrastructure.adapters.mariadb.database_context import DatabaseContext
 from src.api.routers import books, sections, tasks
+from fastapi.middleware.cors import CORSMiddleware
 
 # audit router is deprecated; keep only if needed for backward compatibility
 # from src.api.routers import audit
@@ -16,6 +17,15 @@ from src.api.routers import books, sections, tasks
 settings = get_settings()
 
 app = FastAPI(title="Insight Auditor API", version="3.0")
+
+# after creating app
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],  # or ["*"] for development
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Register routers
 app.include_router(books.router)
