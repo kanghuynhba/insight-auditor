@@ -133,7 +133,6 @@ Output:
 ######################
 -Real Data-
 ######################
-Section path: {path_id}
 Chunk token count: {chunk_token_count}
 Body text:
 {body_text}

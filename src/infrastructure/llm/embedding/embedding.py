@@ -2,16 +2,14 @@
 
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Iterator
-from typing import TYPE_CHECKING, Any, Unpack
+from typing import Any, Unpack
 
-if TYPE_CHECKING:
-    from llm.types import (
-        LLMEmbeddingArgs,
-        LLMEmbeddingChunk,
-        LLMEmbeddingResponse,
-        ModelConfig,
-        ResponseFormat,
-    )
+from src.infrastructure.llm.types import (
+    LLMEmbeddingArgs,
+    LLMEmbeddingResponse,
+    ModelConfig,
+    ResponseFormat,
+)
 
 
 class LLMEmbedding(ABC):

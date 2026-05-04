@@ -5,7 +5,7 @@ python-dotenv
 httpx
 anyio
 
-# Database & ORM (Spring-Boot style)
+# Database & ORM
 sqlmodel>=0.0.14
 sqlalchemy>=2.0.0
 lancedb
@@ -13,19 +13,28 @@ pandas
 aiomysql
 greenlet
 
-# AI & LLM
+# AI & LLM Orchestration
 openai
 litellm==1.82.6
 langchain-core
 langchain-community
 langchain-text-splitters
 
-# Document Processing
+# Document Processing & Parsing
 unstructured[all-docs]
 pypdf
 pymupdf>=1.23.0
+ebooklib
+html2text
+beautifulsoup4
+lxml
+markdownify
 
-# Testing (Simplified for 3.12)
+# Testing & Utilities
 pytest
 pytest-asyncio
 python-multipart
+
+uvicorn
+aiofiles>=23.0.0
+tiktoken>=0.5.0

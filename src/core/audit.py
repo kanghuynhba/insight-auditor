@@ -10,7 +10,6 @@ from src.core.helpers import now
 
 class AuditReport(Entity, table=True):
     __tablename__ = "audit_report"
-    section_id: str = Field(foreign_key="section.id", index=True)
     summary_id: str = Field(foreign_key="summary.id", index=True)
     score: float = 0.0
     score_delta: float | None = None

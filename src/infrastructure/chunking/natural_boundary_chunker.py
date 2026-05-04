@@ -120,7 +120,6 @@ class NaturalBoundaryChunker(Chunker):
                     id=str(uuid4()),
                     book_id=book_id,
                     section_id=section.id,
-                    path_id=section.path_id,
                     text=full_chunk_text,
                     start_char=start_idx,
                     end_char=end_idx,

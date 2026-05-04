@@ -13,7 +13,6 @@ class TextChunk(LanceModel):
     id: str = Field(default_factory=new_id)
     book_id: str
     section_id: str
-    path_id: str
     text: str
     chunk_index: int  # position within the section
     chunk_level: str  # "paragraph" | "sentence" | "word_window"

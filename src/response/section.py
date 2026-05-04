@@ -6,9 +6,5 @@ class SectionDetailResponse(BaseSchema):
     """Full section including raw_text and extraction_status."""
 
     id: str
-    title: str
-    path_id: str
-    level: int
-    word_count: int
     raw_text: Optional[str]
     extraction_status: str

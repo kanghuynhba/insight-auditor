@@ -51,10 +51,8 @@ Output:
 ######################
 -Real Data-
 ######################
-Section path: {path_id}
 Facts (internal — do not reveal to the reader):
 {facts}
 Fact count requested: {count}
 ######################
 Output:"""
-

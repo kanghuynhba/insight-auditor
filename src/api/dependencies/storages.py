@@ -7,6 +7,9 @@ from src.infrastructure.adapters.mariadb.database_context import DatabaseContext
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.infrastructure.persistence.atomic_facts_repo import AtomicFactRepository
+from src.infrastructure.persistence.table_of_content_repo import (
+    TableOfContentRepository,
+)
 from src.infrastructure.persistence.audit_report_repo import AuditReportRepository
 from src.infrastructure.persistence.book_repo import BookRepository
 from src.infrastructure.persistence.table_of_content_repo import (
@@ -30,7 +33,7 @@ def get_book_repo(session: AsyncSession = Depends(get_session)) -> BookRepositor
     return BookRepository(session)
 
 
-def get_table_of_content_repo(
+def get_toc_repo(
     session: AsyncSession = Depends(get_session),
 ) -> TableOfContentRepository:
     return TableOfContentRepository(session)

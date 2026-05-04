@@ -32,7 +32,6 @@ async def extract_facts(
     # 4. Prepare user message with specific instruction variables
     user_message = user_prompt_template.format(
         body_text=body_text,
-        path_id=chunk.path_id,
         max_facts=max_facts,
         chunk_token_count=token_count,
     )
@@ -68,7 +67,6 @@ async def extract_facts(
                 AtomicFact(
                     section_id=chunk.section_id,
                     chunk_id=chunk.id,
-                    path_id=chunk.path_id,
                     point=raw.get("point", ""),
                     questions=raw.get("questions", []),
                     rank=raw.get("rank"),

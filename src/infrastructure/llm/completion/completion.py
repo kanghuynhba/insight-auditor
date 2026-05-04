@@ -3,13 +3,12 @@
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Unpack
 
-if TYPE_CHECKING:
-    from llm.types import (
-        LLMCompletionArgs,
-        LLMCompletionResponse,
-        ModelConfig,
-        ResponseFormat,
-    )
+from src.infrastructure.llm.types import (
+    LLMCompletionArgs,
+    LLMCompletionResponse,
+    ModelConfig,
+    ResponseFormat,
+)
 
 
 class LLMCompletion(ABC):

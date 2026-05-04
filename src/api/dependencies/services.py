@@ -1,6 +1,6 @@
 from fastapi import Depends
+from src.infrastructure.loaders.epub_loader import EpubLoader
 from src.infrastructure.persistence.task_repo import TaskRepository
-from src.infrastructure.persistence import task_repo
 from src.services.task_service import TaskService
 from src.core.config import get_settings
 from src.infrastructure.loaders.file_type import FileType
@@ -18,6 +18,7 @@ from src.services.book_extraction_service import BookExtractionService
 from src.services.chunk_ingestion_service import ChunkIngestionService
 from src.services.facts_extraction_service import FactsExtractionService
 from src.services.audit_service import AuditService
+from src.services.toc_service import TOCService
 from src.api.dependencies.llm import get_llm_completion, get_llm_embedding
 from src.api.dependencies.storages import (
     get_book_repo,
@@ -26,6 +27,7 @@ from src.api.dependencies.storages import (
     get_audit_report_repo,
     get_summary_repo,
     get_task_repo,
+    get_section_repo,
 )
 from src.api.dependencies.vector import get_vector_repo
 
@@ -37,17 +39,22 @@ def get_book_extraction_service(
 ) -> BookExtractionService:
     loaders = {
         FileType.Pdf: PdfLoader(settings),
-        # FileType.Epub: EpubLoader(settings),
+        FileType.Epub: EpubLoader(settings),
     }
     return BookExtractionService(loaders, book_repo)
+
+
+def get_toc_service():
+    return TOCService()
 
 
 def get_chunk_ingestion_service(
     chunker: NaturalBoundaryChunker = Depends(lambda: NaturalBoundaryChunker(settings)),
     embedder: LiteLLMEmbedding = Depends(get_llm_embedding),
     vector_repo: VectorRepository = Depends(get_vector_repo),
+    toc_service: TOCService = Depends(get_toc_service),
 ) -> ChunkIngestionService:
-    return ChunkIngestionService(chunker, embedder, vector_repo)
+    return ChunkIngestionService(chunker, embedder, vector_repo, toc_service)
 
 
 def get_facts_extraction_service(

@@ -45,7 +45,7 @@ class ChunkRepository(VectorRepository):
             await self._table.add(data)
 
     async def search_chunks(
-        self, query_vector: List[float], book_id: str, path_id: str, top_k: int = 5
+        self, query_vector: List[float], book_id: str, top_k: int = 5
     ) -> List[dict[str, Any]]:
         """
         Search chunks using a pre-calculated vector.
@@ -53,9 +53,7 @@ class ChunkRepository(VectorRepository):
         """
         return await (
             self._table.search(query_vector)
-            .where(
-                f"book_id = '{book_id}' AND path_id LIKE '{path_id}%'", prefilter=True
-            )
+            .where(f"book_id = '{book_id}'", prefilter=True)
             .limit(top_k)
             .to_list()
         )

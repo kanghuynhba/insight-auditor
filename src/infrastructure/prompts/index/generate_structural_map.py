@@ -54,7 +54,6 @@ PART 2 — MUST-KNOW FACTS
 ######################
 -Real Data-
 ######################
-Section path: {path_id}
 Text:
 {text}
 ######################

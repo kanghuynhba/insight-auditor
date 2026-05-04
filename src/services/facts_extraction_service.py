@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from typing import List, Optional
-from core.exceptions import ExtractionNotReadyError
+from src.core.exceptions import ExtractionNotReadyError
 from src.core.enums import ExtractionStatus
 from src.services.task_service import TaskService
 from src.core.text_chunk import TextChunk

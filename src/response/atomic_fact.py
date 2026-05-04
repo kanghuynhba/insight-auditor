@@ -8,7 +8,6 @@ class AtomicFactResponse(BaseSchema):
 
     id: str
     chunk_id: str
-    path_id: str
     point: str
     reason: Optional[str]
     rank: int

@@ -29,7 +29,6 @@ class AuditService:
     async def evaluate_summary(
         self,
         section_id: str,
-        path_id: str,
         summary_text: str,
     ) -> AuditReport:
         # Gate: minimum word count

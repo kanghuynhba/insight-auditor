@@ -16,7 +16,6 @@ class AtomicFact(Entity, table=True):
 
     section_id: str = Field(foreign_key="section.id", index=True)
     chunk_id: str = Field(index=True)
-    path_id: str = Field(index=True)
     point: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
     reason: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
     rank: Tier = Field(default=Tier.NUANCE, index=True)

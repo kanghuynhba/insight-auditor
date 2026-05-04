@@ -3,8 +3,7 @@ from typing import Optional
 
 from src.core.exceptions import ExtractionNotReadyError
 from src.response.section import SectionDetailResponse
-from src.response.audit_report import AuditReportResponse  # note: typo in filename
-from src.response.atomic_fact import AtomicFactResponse
+from src.response.audit_report import AuditReportResponse
 from src.infrastructure.persistence.summary_repo import SummaryRepository
 from src.services.task_service import TaskService
 from src.api.dependencies.storages import get_audit_report_repo, get_summary_repo
@@ -32,17 +31,20 @@ async def get_section(
     section = await section_repo.find_by_id(section_id)
     if not section:
         raise HTTPException(404, "Section not found")
+
     return SectionDetailResponse(
         id=section.id,
-        title=section.title,
-        path_id=section.path_id,
-        level=section.level,
         word_count=section.word_count,
         raw_text=section.raw_text,
-        extraction_status=section.extraction_status.value,
+        extraction_status=(
+            section.extraction_status.value
+            if hasattr(section.extraction_status, "value")
+            else section.extraction_status
+        ),
     )
 
 
+# POST /sections/{section_id}/extract-facts
 @router.post("/{section_id}/extract-facts")
 async def extract_facts(
     section_id: str,
@@ -126,6 +128,7 @@ async def get_hints(
     section = await section_repo.find_by_id(section_id)
     if not section:
         raise HTTPException(404, "Section not found")
+
     if section.extraction_status != ExtractionStatus.DONE:
         raise HTTPException(
             400, "No facts extracted for this section – call extract-facts first"
@@ -151,6 +154,7 @@ async def evaluate_summary(
     section = await section_repo.find_by_id(section_id)
     if not section:
         raise HTTPException(404, "Section not found")
+
     if section.extraction_status != ExtractionStatus.DONE:
         raise HTTPException(
             400, "Atomic facts not ready – please wait for extraction to complete"
@@ -158,9 +162,9 @@ async def evaluate_summary(
 
     report = await audit_svc.evaluate_summary(
         section_id=section_id,
-        path_id=section.path_id,
         summary_text=request.summary,
     )
+
     summary = await summary_repo.find_by_id(report.summary_id)
     attempt_number = summary.attempt_number if summary else 1
 
@@ -171,13 +175,14 @@ async def evaluate_summary(
             {
                 "fact_id": v.atomic_fact_id,
                 "point": fact.point if fact else "",
-                "rank": fact.rank.value if fact else 3,
-                "status": v.status.value,
+                "rank": fact.rank if hasattr(fact, "rank") else 3,
+                "status": v.status if hasattr(v.status, "value") else v.status,
                 "evidence": v.evidence or "",
                 "confidence": v.confidence,
                 "improved": v.improved,
             }
         )
+
     return AuditReportResponse(
         id=report.id,
         score=report.score,
@@ -199,8 +204,8 @@ async def get_evaluation_history(
             "id": r.id,
             "score": r.score,
             "score_delta": r.score_delta,
-            "attempt_number": r.summary.attempt_number,
-            "generated_at": r.generated_at.isoformat(),
+            "attempt_number": r.summary.attempt_number if r.summary else 1,
+            "generated_at": r.generated_at.isoformat() if r.generated_at else None,
         }
         for r in reports
     ]

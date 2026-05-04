@@ -2,7 +2,7 @@
 
 from typing import List
 
-from sqlmodel import select
+from sqlmodel import delete, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from src.core.atomic_fact import AtomicFact
 from src.infrastructure.persistence.base_repository import Repository

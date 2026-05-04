@@ -1,63 +1,33 @@
+# src/response/book.py
 from typing import List, Optional
+from src.response.toc_node_response import TocNodeResponse
 from src.response.base import BaseSchema
 
 
-class TocNodeResponse(BaseSchema):
-    id: str
-    title: str
-    level: int
-    section_id: Optional[str]
-    order: int
-    children: List["TocNodeResponse"] = []
-
-
 class BookUploadResponse(BaseSchema):
-    """Response for POST /books/upload (SRS §6.2)."""
+    """Response for book upload."""
 
     id: str
     title: str
     author: Optional[str]
     source_format: str
-    total_chapters: int
-    toc: List[TocNodeResponse]
+    message: str = "Book uploaded successfully"
 
 
 class BookSummary(BaseSchema):
-    """Response for GET /books (list all books)."""
+    """Book summary for list view."""
 
     id: str
     title: str
     author: Optional[str]
     source_format: str
-    total_chapters: int
-
-
-class SectionResponse(BaseSchema):
-    """Section inside a chapter (no raw_text, no chapter_id)."""
-
-    id: str
-    title: str
-    path_id: str
-    level: int
-    word_count: int
-    extraction_status: str
-
-
-class ChapterDetailResponse(BaseSchema):
-    """Chapter with its sections (used in full book hierarchy)."""
-
-    id: str
-    title: str
-    path_id: str
-    index: int
-    sections: List[SectionResponse]
 
 
 class BookDetailResponse(BaseSchema):
-    """Full book hierarchy (SRS §6.2 GET /books/{book_id})."""
+    """Full book details with nested TOC (including fake root)."""
 
     id: str
     title: str
     author: Optional[str]
     source_format: str
-    toc: List[TocNodeResponse]
+    toc: TocNodeResponse
