@@ -19,6 +19,7 @@ class TocNode:
     title: str
     level: int
     order: int
+    section_id: Optional[str] = None
     href: Optional[str] = None
     section: Optional[Section] = None
     children: List["TocNode"] = field(default_factory=list)

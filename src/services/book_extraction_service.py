@@ -30,7 +30,7 @@ class BookExtractionService:
         if not loader:
             raise ValueError(f"No loader found for {file_type}")
 
-        book = await loader.load(file_path)
+        book = loader.load(file_path)
 
         existing_book = await self.book_repo.find_by_id(book.id)
 

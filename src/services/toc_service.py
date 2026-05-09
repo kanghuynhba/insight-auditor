@@ -24,6 +24,7 @@ class TOCService:
         root = TocNode(
             id="fake_root",
             title="Root",
+            section_id="",
             level=0,
             order=0,
             section=None,
@@ -50,6 +51,8 @@ class TOCService:
                     id=current.id,
                     title=current.title,
                     level=current.level,
+                    section_id=current.section_id,
+                    href=current.href,
                     order=current.order,
                     section=current.section,
                     children=[],
@@ -84,6 +87,7 @@ class TOCService:
                 node = TocNode(
                     id=current.id,
                     title=current.title,
+                    section_id=current.section_id,
                     level=current.level,
                     order=current.order,
                     section=current.section,
@@ -141,6 +145,7 @@ class TOCService:
                 book_id=book_id,
                 section_id=node.section_id,
                 section=node.section,
+                href=node.href,
                 level=node.level,
                 order=next_order,
                 title=node.title,

@@ -1,5 +1,7 @@
 # main.py
 import logging
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -21,7 +23,7 @@ app = FastAPI(title="Insight Auditor API", version="3.0")
 # after creating app
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # or ["*"] for development
+    allow_origins=["*"],  # or ["*"] for development
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -46,3 +48,14 @@ async def root():
 async def init_db():
     db = DatabaseContext(str(settings.mariadb_url))
     await db.initialize_database()
+
+
+# Directory where extracted books will be stored
+EXTRACTED_BOOKS_DIR = Path("extracted_books")
+EXTRACTED_BOOKS_DIR.mkdir(exist_ok=True)
+
+app.mount(
+    "/extracted",
+    StaticFiles(directory=str(EXTRACTED_BOOKS_DIR)),
+    name="extracted_books",
+)

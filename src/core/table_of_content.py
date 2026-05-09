@@ -16,6 +16,7 @@ class TableOfContent(Entity, table=True):
     level: int = Field(nullable=False)
     # reading order for DFS reconstruction
     order: int = Field(nullable=False)
+    href: Optional[str] = Field(default=None)
 
     # Relationships (foreign keys are auto-created)
     book: Optional["Book"] = Relationship(back_populates="table_of_contents")

@@ -1,9 +1,10 @@
 # src/infrastructure/loaders/epub_loader.py
+import shutil
+import zipfile
 import hashlib
 import logging
 from pathlib import Path
 from typing import Optional, Dict
-from uuid import uuid4
 
 from ebooklib import epub
 
@@ -31,7 +32,7 @@ class EpubLoader(Loader):
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
-    async def load(self, path: Path) -> Book:
+    def load(self, path: Path) -> Book:
         logger.info("EpubLoader: loading %s", path)
         epub_book = epub.read_epub(str(path), {"ignore_ncx": False})
 
@@ -60,6 +61,19 @@ class EpubLoader(Loader):
         book.table_of_contents = TOCService.to_entities(toc_root, book.id)
 
         return book
+
+    @staticmethod
+    def extract_to_static(epub_path: Path, book_id: str, static_root: Path) -> Path:
+        """Extract EPUB contents into static_root/book_id and return the path."""
+        extract_dir = static_root / book_id
+        if extract_dir.exists():
+            shutil.rmtree(extract_dir)  # clean previous extraction
+        extract_dir.mkdir(parents=True, exist_ok=True)
+
+        with zipfile.ZipFile(epub_path, "r") as zip_ref:
+            zip_ref.extractall(extract_dir)
+
+        return extract_dir
 
     # ------------------------------------------------------------------
     # Stable book ID computation

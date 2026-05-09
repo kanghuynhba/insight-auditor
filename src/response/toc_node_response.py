@@ -10,6 +10,8 @@ class TocNodeResponse(BaseSchema):
     title: str
     level: int
     order: int
+    href: Optional[str]
+    section_id: str
     children: List["TocNodeResponse"] = []
 
     @classmethod
@@ -18,7 +20,9 @@ class TocNodeResponse(BaseSchema):
         return cls(
             id=toc_node.id,
             title=toc_node.title,
+            section_id=toc_node.section_id,
             level=toc_node.level,
             order=toc_node.order,
+            href=toc_node.href,
             children=[cls.from_toc_node(child) for child in toc_node.children],
         )

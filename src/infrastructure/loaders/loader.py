@@ -8,6 +8,6 @@ class Loader(ABC):
     """Abstract contract for all document parsing strategies."""
 
     @abstractmethod
-    async def load(self, path: Path) -> Book:
+    def load(self, path: Path) -> Book:
         """Parses a file and returns a structured Book domain model."""
         pass

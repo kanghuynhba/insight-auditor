@@ -28,4 +28,6 @@ class Section(Entity, table=True):
 
     @property
     def word_count(self) -> int:
-        return word_count(self.raw_text)
+        if not self.raw_text:
+            return 0
+        return len(self.raw_text.split())

@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 import sys
 from pathlib import Path
+from ebooklib import epub
 
 # ----------------------------------------------------------------------
 # Setup: dummy config to avoid real settings
 # ----------------------------------------------------------------------
 from src.core.config import get_settings
+from src.infrastructure.loaders.text_extractors.epub_text_extractor import (
+    EpubTextExtractor,
+)
+from src.infrastructure.loaders.toc_builders.epub_toc_builder import (
+    EpubTocBuilder,
+)
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -36,12 +43,13 @@ def collect_all_sections(root_toc):
 
 
 def main():
-    epub_path = Path("uploads/ddia.epub")
+    epub_path = Path("uploads/clean_architecture.epub")
     if not epub_path.exists():
         print(f"Error: {epub_path} not found")
         sys.exit(1)
 
     print(f"Loading {epub_path} ...")
+
     loader = EpubLoader(get_settings())  # dummy settings
     book = loader.load(epub_path)
 
@@ -49,8 +57,8 @@ def main():
     print(f"Author: {book.author}")
 
     # Now book.toc is a single root TableOfContent node (the fake root)
-    if book.toc:
-        all_toc_entries = list(collect_all_sections(book.toc))
+    if book.table_of_contents:
+        all_toc_entries = book.table_of_contents
         print(f"Total sections with content: {len(all_toc_entries)}")
     else:
         print("No TOC found.")
@@ -60,15 +68,11 @@ def main():
     output_dir = Path("output_markdown")
     output_dir.mkdir(exist_ok=True)
 
-    for section in all_toc_entries:
-        if section.raw_text:
-            safe_title = section.title.replace("/", "_").replace("\\", "_")
-            filename = f"{safe_title}.md"
-            filepath = output_dir / filename
-            filepath.write_text(section.raw_text, encoding="utf-8")
-            print(f"Saved: {filepath.name}")
+    for toc in all_toc_entries:
+        if toc.section.raw_text:
+            print(f"{toc.title} -> {toc.href}")
         else:
-            print(f"Skipped (no text): {section.title}")
+            print(f"Skipped (no text): {toc.title}")
 
 
 if __name__ == "__main__":

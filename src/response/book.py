@@ -30,4 +30,5 @@ class BookDetailResponse(BaseSchema):
     title: str
     author: Optional[str]
     source_format: str
+    file_url: str
     toc: TocNodeResponse
