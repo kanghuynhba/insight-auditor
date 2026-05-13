@@ -1,6 +1,7 @@
 # src/response/toc_node_response.py
 from typing import List, Optional
 
+from core import section
 from src.core.toc_node import TocNode
 from src.response.base import BaseSchema
 
@@ -10,8 +11,8 @@ class TocNodeResponse(BaseSchema):
     title: str
     level: int
     order: int
-    href: Optional[str]
-    section_id: str
+    section_id: Optional[str] = None
+    href: Optional[str] = None
     children: List["TocNodeResponse"] = []
 
     @classmethod
@@ -21,8 +22,8 @@ class TocNodeResponse(BaseSchema):
             id=toc_node.id,
             title=toc_node.title,
             section_id=toc_node.section_id,
+            href=toc_node.href,
             level=toc_node.level,
             order=toc_node.order,
-            href=toc_node.href,
             children=[cls.from_toc_node(child) for child in toc_node.children],
         )

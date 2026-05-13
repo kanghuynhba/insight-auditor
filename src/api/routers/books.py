@@ -1,4 +1,5 @@
 # src/api/routers/books.py
+from os import unlink
 from fastapi import (
     APIRouter,
     Depends,
@@ -105,9 +106,7 @@ EXTRACTED_BOOKS_DIR = Path("extracted_books")
 @router.post("/upload", response_model=BookUploadResponse)
 async def upload_book(
     file: UploadFile = File(...),
-    background_tasks: BackgroundTasks = None,
     book_extraction: BookExtractionService = Depends(get_book_extraction_service),
-    chunk_ingestion: ChunkIngestionService = Depends(get_chunk_ingestion_service),
 ):
     """Upload a book."""
     try:
@@ -122,10 +121,13 @@ async def upload_book(
     # Schedule chunk ingestion in background
     # if background_tasks:
     #     background_tasks.add_task(chunk_ingestion.ingest_book, book)
-
     # temp_path.unlink()
+
+    # TODO: This is a bit hacky - we should ideally have the loader return the extracted path if needed, or have a separate extraction step. For now, we need to extract the EPUB contents to serve them later.
     if file_type == FileType.Epub:
         EpubLoader.extract_to_static(temp_path, book.id, EXTRACTED_BOOKS_DIR)
+
+    temp_path.unlink()
 
     return BookUploadResponse(
         id=book.id,

@@ -88,6 +88,7 @@ class TOCService:
                     id=current.id,
                     title=current.title,
                     section_id=current.section_id,
+                    href=current.href,
                     level=current.level,
                     order=current.order,
                     section=current.section,

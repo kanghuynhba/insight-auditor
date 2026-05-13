@@ -1,8 +1,7 @@
-# src/infrastructure/loaders/text_extractors/epub_text_extractor.py
 import logging
 import copy
-from typing import Dict, Optional, Set
-from bs4 import BeautifulSoup, Tag
+from typing import Dict, Optional, List, Tuple
+from bs4 import BeautifulSoup, Tag, NavigableString
 from ebooklib import epub
 import ebooklib
 
@@ -13,30 +12,47 @@ logger = logging.getLogger(__name__)
 
 
 class EpubTextExtractor:
+    # Tags to skip entirely during sibling extraction
+    SKIP_TAGS = {"nav", "script", "style"}
+    # Tags considered as containers for section-container mode
+    CONTAINER_TAGS = {"section", "article", "div", "main", "aside", "body"}
+    # Heading tags
+    HEADING_TAGS = {"h", "h1", "h2", "h3", "h4", "h5", "h6"}
+
     @classmethod
     def extract_texts(
         cls, epub_book: epub.EpubBook, toc_root: TocNode
     ) -> Dict[str, str]:
         """
-        Extract sections referenced in TOC, plus chapter-level content.
-        Uses TocNode tree to collect all hrefs and anchors.
+        Extract sections referenced in TOC using frontend-aligned extraction logic.
+        Returns a dict mapping full href (e.g. 'OEBPS/ch01.xhtml#sec1') to Markdown.
+
+        Stop-anchor logic mirrors the frontend's findStopAnchor in useNavigationMap.ts:
+        for each node, scan forward in the FLAT navigation list and use the first
+        subsequent node that shares the same file (and is not a descendant) as the
+        hard stop — regardless of heading level or parent/child relationship.
         """
-        # First, collect all hrefs and anchors from the TOC tree
-        hrefs_with_anchors = cls._collect_hrefs_from_toc(toc_root)
-
-        # Also collect chapter-level hrefs (without anchors)
-        chapter_hrefs = cls._collect_chapter_hrefs(toc_root)
-
-        # Build file path to item map
         file_item_map = cls._build_file_item_map(epub_book)
-        content_map = {}
+        content_map: Dict[str, str] = {}
 
-        # Process chapter-level content first
-        for href in chapter_hrefs:
-            file_path = href.split("#")[0] if "#" in href else href
+        # Build a flat list of all TOC nodes (mirrors frontend's flatten())
+        flat_nodes: List[TocNode] = cls._flatten_toc(toc_root)
+
+        # Build a set of descendant IDs for each node (for stop-anchor filtering)
+        descendant_ids_map: Dict[str, set] = {
+            node.id: cls._descendant_ids(node) for node in flat_nodes
+        }
+
+        for idx, node in enumerate(flat_nodes):
+            if not node.href:
+                continue
+
+            full_href = node.href
+            file_path, anchor = cls._split_href(full_href)
+
             item = file_item_map.get(file_path)
             if not item:
-                logger.warning("No content item for chapter %r", href)
+                logger.warning("No content item for %r", file_path)
                 continue
 
             try:
@@ -46,166 +62,313 @@ class EpubTextExtractor:
                 continue
 
             soup = BeautifulSoup(html, "html.parser")
-            chapter_content = cls._extract_chapter_content(soup)
-            if chapter_content:
-                content_map[href] = chapter_content
-                logger.debug(f"Extracted chapter content: {href}")
 
-        # Process anchored sections
-        for href, anchor in hrefs_with_anchors:
-            file_path = href.split("#")[0]
-            item = file_item_map.get(file_path)
-            if not item:
-                logger.warning("No content item for %r", href)
-                continue
+            # Compute stop anchor using frontend-aligned flat-list logic
+            stop_anchor = cls._find_stop_anchor(
+                flat_nodes, idx, node, descendant_ids_map
+            )
 
-            try:
-                html = item.get_content().decode("utf-8", errors="replace")
-            except Exception as e:
-                logger.warning("Could not decode %r – %s", href, e)
-                continue
+            if anchor:
+                target = cls._find_anchor(soup, anchor)
+                if not target:
+                    logger.warning("Anchor '%s' not found in %s", anchor, file_path)
+                    continue
+                extracted_html = cls._extract_by_target(
+                    soup, target, file_path, stop_anchor
+                )
+            else:
+                # No anchor → chapter-level extraction (stop anchor not applicable)
+                extracted_html = cls._extract_chapter_level(soup)
 
-            soup = BeautifulSoup(html, "html.parser")
-
-            # Find the anchor element
-            target = soup.find(id=anchor) or soup.find("a", {"name": anchor})
-            if not target:
-                logger.warning("Anchor '%s' not found in %s", anchor, file_path)
-                continue
-
-            # Extract using DFS (process children first)
-            cls._dfs_extract(target, href, anchor, content_map)
+            if extracted_html:
+                markdown = html_to_markdown(extracted_html) or ""
+                if markdown.strip():
+                    content_map[full_href] = markdown
+                    logger.debug("Extracted %s (%d chars)", full_href, len(markdown))
 
         return content_map
 
+    # -------------------------------------------------------------------------
+    #  Flat navigation map helpers  (mirrors frontend useNavigationMap.ts)
+    # -------------------------------------------------------------------------
+
     @classmethod
-    def _collect_hrefs_from_toc(cls, node: TocNode) -> list:
+    def _flatten_toc(cls, node: TocNode) -> List[TocNode]:
         """
-        Traverse TocNode tree and collect all (full_href, anchor) pairs.
-        Returns list of tuples: [(full_href, anchor), ...]
+        Mirrors frontend flatten(): returns every node in depth-first order,
+        skipping the fake root (level == 0).
         """
-        hrefs = []
-
-        # Skip fake root (level 0)
-        if node.level > 0 and node.href and "#" in node.href:
-            parts = node.href.split("#")
-            file_path = parts[0]
-            anchor = parts[1] if len(parts) > 1 else None
-            if anchor:
-                hrefs.append((node.href, anchor))
-
-        # Recursively collect from children
+        result = []
+        if node.level > 0:
+            result.append(node)
         for child in node.children:
-            hrefs.extend(cls._collect_hrefs_from_toc(child))
-
-        return hrefs
+            result.extend(cls._flatten_toc(child))
+        return result
 
     @classmethod
-    def _collect_chapter_hrefs(cls, node: TocNode) -> Set[str]:
-        """
-        Traverse TocNode tree and collect chapter-level hrefs (without anchors).
-        These are for content that belongs to the chapter itself.
-        """
-        hrefs = set()
-
-        # Skip fake root (level 0)
-        if node.level > 0 and node.href:
-            # If href has no anchor, it's a chapter-level reference
-            if "#" not in node.href:
-                hrefs.add(node.href)
-
-        # Recursively collect from children
+    def _descendant_ids(cls, node: TocNode) -> set:
+        """Return the set of IDs of all descendants of node (not including node itself)."""
+        ids = set()
         for child in node.children:
-            hrefs.update(cls._collect_chapter_hrefs(child))
-
-        return hrefs
+            ids.add(child.id)
+            ids.update(cls._descendant_ids(child))
+        return ids
 
     @classmethod
-    def _extract_chapter_content(cls, soup: BeautifulSoup) -> str:
+    def _find_stop_anchor(
+        cls,
+        flat_nodes: List[TocNode],
+        idx: int,
+        current: TocNode,
+        descendant_ids_map: Dict[str, set],
+    ) -> Optional[str]:
         """
-        Extract content that belongs to the chapter level (before any sections).
-        This includes the main heading and any paragraphs or elements before the first <section>.
+        Mirrors frontend findStopAnchor() in useNavigationMap.ts exactly:
+
+        Scan forward from idx+1 in the flat node list.
+        - Stop scanning if we reach a node in a DIFFERENT file.
+        - Skip nodes that are descendants of `current`.
+        - Return the anchor of the first qualifying node.
+
+        This means the stop is always the very next peer/uncle/cousin in the
+        same file — regardless of heading level or TOC depth.
         """
-        # Find the first section (if any)
-        first_section = soup.find("section")
+        current_file = cls._split_href(current.href)[0]
+        descendant_ids = descendant_ids_map.get(current.id, set())
 
-        if first_section:
-            # Collect all elements before the first section
-            elements_before = []
-            for elem in soup.body.children if soup.body else soup.children:
-                if elem == first_section:
-                    break
-                if hasattr(elem, "name") and elem.name not in (
-                    "nav",
-                    "script",
-                    "style",
-                ):
-                    elements_before.append(elem)
-                elif isinstance(elem, str) and elem.strip():
-                    # Text nodes
-                    elements_before.append(elem)
-        else:
-            # No sections at all, take everything except navigation
-            elements_before = [
-                elem
-                for elem in (soup.body.children if soup.body else soup.children)
-                if hasattr(elem, "name")
-                and elem.name != "nav"
-                or (isinstance(elem, str) and elem.strip())
-            ]
+        for i in range(idx + 1, len(flat_nodes)):
+            candidate = flat_nodes[i]
+            candidate_file = cls._split_href(candidate.href)[0]
 
-        if not elements_before:
+            # Different file → stop searching (no stop anchor in this file)
+            if candidate_file != current_file:
+                break
+
+            # Skip own descendants
+            if candidate.id in descendant_ids:
+                continue
+
+            # First non-descendant node in same file → its anchor is our stop
+            _, candidate_anchor = cls._split_href(candidate.href)
+            if candidate_anchor:
+                return candidate_anchor
+
+        return None
+
+    # -------------------------------------------------------------------------
+    #  Frontend-aligned extraction methods
+    # -------------------------------------------------------------------------
+
+    @classmethod
+    def _extract_chapter_level(cls, soup: BeautifulSoup) -> str:
+        """
+        Mimics frontend extractChapterLevel:
+        - If there's a <section>, take everything before it (excluding skippable tags).
+        - Otherwise clone <body>, remove nav/script/style/section, return inner HTML.
+        """
+        body = soup.body
+        if not body:
             return ""
 
-        # Build HTML from collected elements
-        chapter_html = "".join(str(e) for e in elements_before)
-        raw_text = html_to_markdown(chapter_html) or ""
-        return raw_text
+        first_section = body.find("section", recursive=False)
+        if first_section:
+            parts = []
+            for child in body.children:
+                if child == first_section:
+                    break
+                if isinstance(child, Tag):
+                    if child.name in cls.SKIP_TAGS:
+                        continue
+                    parts.append(str(child))
+                elif isinstance(child, NavigableString) and child.strip():
+                    parts.append(child.strip())
+            return "".join(parts)
+
+        clone = copy.copy(body)
+        for tag in clone.find_all(["nav", "script", "style", "section"]):
+            tag.decompose()
+        return "".join(str(c) for c in clone.children)
 
     @classmethod
-    def _dfs_extract(
-        cls, element: Tag, full_href: str, anchor: str, content_map: Dict[str, str]
-    ) -> None:
+    def _extract_by_target(
+        cls,
+        soup: BeautifulSoup,
+        target: Tag,
+        file_path: str,
+        stop_anchor: Optional[str],
+    ) -> str:
         """
-        DFS extraction: process inner sections first, then extract parent.
-        Only extracts the specific anchor element, not every section.
+        Dispatches to the right extraction strategy based on the target element,
+        now passing the pre-computed stop_anchor from the flat navigation map.
+
+        Mirrors the frontend extract() dispatcher but stop_anchor is always
+        supplied from the nav map rather than computed from the DOM.
         """
-        # Find direct child sections (for recursion)
-        child_sections = [
-            child
-            for child in element.children
-            if hasattr(child, "name") and child.name == "section"
-        ]
+        tag = target.name.lower()
 
-        # Process each child section recursively FIRST (deepest first)
-        for child in child_sections:
-            child_anchor = child.get("id") or child.get("name")
-            if child_anchor:
-                # Reconstruct full href for child
-                file_path = full_href.split("#")[0]
-                child_full_href = cls.make_full_href(file_path, child_anchor)
-                if child_full_href not in content_map:
-                    cls._dfs_extract(child, child_full_href, child_anchor, content_map)
+        # 1. Body → chapter level
+        if tag == "body":
+            return cls._extract_chapter_level(soup)
 
-        # After processing children, extract this section
-        element_clone = copy.copy(element)
+        # 2. Container (section/div/article/…) → section-container mode:
+        #    clone it and strip nested <section> children.
+        #    stop_anchor is NOT used here because the container is self-contained.
+        if tag in cls.CONTAINER_TAGS:
+            clone = copy.copy(target)
+            for nested in clone.find_all("section", recursive=True):
+                nested.decompose()
+            return str(clone)
 
-        # Remove all nested sections from the clone (they've already been extracted)
-        for nested in element_clone.find_all("section", recursive=True):
-            nested.decompose()
+        # 3. Heading or heading-like → sibling-walk with nav-map stop anchor
+        if tag in cls.HEADING_TAGS or cls._is_heading_like(target):
+            heading = target
+        else:
+            heading = cls._resolve_heading_element(target, soup.body)
+            if not heading:
+                return cls._extract_siblings(target, stop_anchor)
 
-        # Convert to HTML and then to Markdown
-        section_html = str(element_clone)
-        raw_text = html_to_markdown(section_html) or ""
-        content_map[full_href] = raw_text
-        logger.debug(f"Extracted section: {full_href}")
+        return cls._extract_siblings(heading, stop_anchor)
+
+    @classmethod
+    def _extract_siblings(cls, start_el: Tag, stop_anchor: Optional[str]) -> str:
+        """
+        Collects outerHTML from start_el and its following siblings,
+        skipping SKIP_TAGS, stopping when an element with id=stop_anchor
+        is reached (or found inside an element).
+
+        Mirrors frontend extractSiblings() exactly.
+        """
+        parts = []
+        cur: Optional[Tag] = start_el
+
+        while cur:
+            if stop_anchor:
+                if cur.get("id") == stop_anchor:
+                    break
+                if cur.find(id=stop_anchor):
+                    clone = copy.copy(cur)
+                    cls._trim_to_stop_anchor(clone, stop_anchor)
+                    if clone.name not in cls.SKIP_TAGS:
+                        parts.append(str(clone))
+                    break
+
+            if cur.name not in cls.SKIP_TAGS:
+                parts.append(str(cur))
+
+            # Advance to next sibling Tag (skip NavigableString)
+            cur = cur.next_sibling
+            while cur is not None and not isinstance(cur, Tag):
+                cur = cur.next_sibling
+
+        return "".join(parts)
+
+    @classmethod
+    def _trim_to_stop_anchor(cls, clone: Tag, stop_anchor: str) -> None:
+        """
+        Removes all content at and after the element with id=stop_anchor
+        from the cloned tag. Mirrors frontend trimToStopAnchor().
+        """
+        stop_el = clone.find(id=stop_anchor)
+        if not stop_el:
+            return
+
+        node = stop_el
+        while node and node != clone:
+            sib = node.next_sibling
+            while sib:
+                next_sib = sib.next_sibling
+                if hasattr(sib, "decompose"):
+                    sib.decompose()
+                sib = next_sib
+            node = node.parent
+
+        stop_el.decompose()
+
+    # -------------------------------------------------------------------------
+    #  Helper methods
+    # -------------------------------------------------------------------------
 
     @staticmethod
-    def make_full_href(file_path: str, anchor: Optional[str]) -> str:
-        """Combine file_path and anchor into a full href."""
-        if anchor:
-            return f"{file_path}#{anchor}"
-        return file_path
+    def _find_anchor(soup: BeautifulSoup, anchor: str) -> Optional[Tag]:
+        """Find element by id or name attribute."""
+        el = soup.find(id=anchor)
+        if not el:
+            el = soup.find("a", {"name": anchor})
+        return el
+
+    @classmethod
+    def _resolve_heading_element(cls, el: Tag, body: Optional[Tag]) -> Optional[Tag]:
+        """
+        Mirrors frontend resolveHeadingElement():
+        - If el itself is heading-like, return it.
+        - Else try parent, then next sibling.
+        - Else fall back to nearest block ancestor.
+        """
+        tag = el.name.lower()
+        if tag in cls.HEADING_TAGS or cls._is_heading_like(el):
+            return el
+
+        parent = el.parent
+        if (
+            parent
+            and parent.name
+            and (parent.name in cls.HEADING_TAGS or cls._is_heading_like(parent))
+        ):
+            return parent
+
+        nxt = el.next_sibling
+        while nxt and not isinstance(nxt, Tag):
+            nxt = nxt.next_sibling
+        if nxt and (nxt.name in cls.HEADING_TAGS or cls._is_heading_like(nxt)):
+            return nxt
+
+        return cls._nearest_block_ancestor(el, body)
+
+    @classmethod
+    def _nearest_block_ancestor(cls, el: Tag, root: Optional[Tag]) -> Optional[Tag]:
+        BLOCK_TAGS = {
+            "div",
+            "p",
+            "section",
+            "article",
+            "aside",
+            "main",
+            "header",
+            "footer",
+            "li",
+            "td",
+            "th",
+            "blockquote",
+            "figure",
+        }
+        cur = el.parent
+        while cur and cur != root:
+            if cur.name in BLOCK_TAGS:
+                return cur
+            cur = cur.parent
+        return None
+
+    @classmethod
+    def _is_heading_like(cls, el) -> bool:
+        if not isinstance(el, Tag) or el.name != "p":
+            return False
+        classes = el.get("class", [])
+        if isinstance(classes, str):
+            classes = classes.split()
+        heading_hints = {"h", "chap", "chapter-title", "section-title"}
+        return any(hint in " ".join(classes).lower() for hint in heading_hints)
+
+    # -------------------------------------------------------------------------
+    #  TOC traversal and file helpers
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def _split_href(href: str) -> Tuple[str, Optional[str]]:
+        """Return (file_path, anchor) – anchor may be None."""
+        if "#" in href:
+            parts = href.split("#", 1)
+            return parts[0], parts[1]
+        return href, None
 
     @staticmethod
     def _build_file_item_map(epub_book: epub.EpubBook) -> Dict[str, object]:
