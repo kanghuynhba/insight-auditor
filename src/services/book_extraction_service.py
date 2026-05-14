@@ -4,7 +4,8 @@ from typing import Dict
 from src.infrastructure.persistence.base_repository import Repository
 from src.core.book import Book
 from src.infrastructure.loaders.file_type import FileType
-from src.infrastructure.loaders.loader import Loader
+from src.infrastructure.loaders.loader import ExtractedBookData, Loader
+from src.services.toc_service import TOCService
 
 logger = logging.getLogger(__name__)
 
@@ -30,15 +31,27 @@ class BookExtractionService:
         if not loader:
             raise ValueError(f"No loader found for {file_type}")
 
-        book = loader.load(file_path)
+        book_id = loader.get_stable_id(file_path)
 
-        existing_book = await self.book_repo.find_by_id(book.id)
+        existing_book = await self.book_repo.find_by_id(book_id)
 
         if existing_book:
-            logger.info(
-                f"Book '{book.title}' (ID: {book.id}) already exists. Skipping."
-            )
+            logger.info(f"Book (ID: {book_id}) already exists. Skipping.")
             return existing_book
+
+        extracted_book: ExtractedBookData = loader.extract_raw(file_path)
+
+        table_of_contents = TOCService.to_entities(extracted_book.toc_root, book_id)
+
+        book = Book(
+            id=book_id,
+            title=extracted_book.title,
+            author=extracted_book.author,
+            source_format=file_type.value,
+            file_path=str(file_path),
+            source_filename=file_path.name,
+            table_of_contents=table_of_contents,
+        )
 
         saved_book = await self.book_repo.save(book)
         await self.book_repo.session.commit()

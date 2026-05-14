@@ -12,11 +12,6 @@ def clean_markdown_text(text: str) -> str:
     return text.strip()
 
 
-# ---------------------------------------------------------------------------
-# EPUB: HTML → Markdown (two entry points)
-# ---------------------------------------------------------------------------
-
-
 def html_to_markdown(html_content: str) -> str:
     """
     Convert an entire HTML document to Markdown.

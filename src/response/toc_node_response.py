@@ -1,7 +1,6 @@
 # src/response/toc_node_response.py
 from typing import List, Optional
 
-from core import section
 from src.core.toc_node import TocNode
 from src.response.base import BaseSchema
 

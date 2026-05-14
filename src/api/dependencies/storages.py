@@ -1,7 +1,5 @@
 from collections.abc import AsyncGenerator
 from fastapi import Depends
-from src.core.task import Task
-from src.infrastructure.persistence.task_repo import TaskRepository
 from src.api.dependencies.database import get_db_context
 from src.infrastructure.adapters.mariadb.database_context import DatabaseContext
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -63,7 +61,3 @@ def get_fact_validation_repo(
     session: AsyncSession = Depends(get_session),
 ) -> FactValidationResultRepository:
     return FactValidationResultRepository(session)
-
-
-def get_task_repo(session: AsyncSession = Depends(get_session)) -> TaskRepository:
-    return TaskRepository(session)

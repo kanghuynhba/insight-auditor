@@ -1,6 +1,6 @@
 # src/infrastructure/loaders/toc_builders/epub_toc_builder.py
 import logging
-from typing import List, Optional, Dict, Set
+from typing import List, Optional
 from xml.etree import ElementTree as ET
 from uuid import uuid4
 

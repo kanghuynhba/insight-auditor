@@ -107,15 +107,16 @@ class LiteLLMCompletion(LLMCompletion):
         args = {**self._config, **self._extra_kwargs, **kwargs, "messages": messages}
 
         if response_format is not None:
-            if (
-                not hasattr(response_format, "__origin__")
-                or response_format.__origin__ != list
-            ):
-                args["response_format"] = {"type": "json_object"}
+            # if (
+            #     not hasattr(response_format, "__origin__")
+            #     or response_format.__origin__ != list
+            # ):
+            args["response_format"] = {"type": "json_object"}
 
         return args
 
     # TODO: move this out into some helpers that supports json processing
+
     @staticmethod
     def _parse_json(
         content: str, response_format: type[ResponseFormat]
@@ -123,11 +124,17 @@ class LiteLLMCompletion(LLMCompletion):
         """
         Parses the raw string content into the requested format.
         Supports Pydantic models, list[T], and dict.
+        If a list is expected but a dict is parsed:
+            - If the dict has fact-like keys (point, rank, etc.), wrap it in a list.
+            - Otherwise, try to extract a list from common keys like "facts", "result", etc.
         """
         import json
+        import logging
+
+        logger = logging.getLogger(__name__)
 
         try:
-            # More compatible way to strip markdown fences
+            # Strip markdown fences
             clean_content = content.strip()
             if clean_content.startswith("```json"):
                 clean_content = clean_content[7:]  # length of ```json
@@ -140,16 +147,34 @@ class LiteLLMCompletion(LLMCompletion):
             clean_content = clean_content.strip()
             data = json.loads(clean_content)
 
-            # Check if response_format is a list (e.g., list[Dict[str, Any]])
+            # Check if the expected type is a list
             origin = getattr(response_format, "__origin__", None)
             if origin is list:
-                # For list[T], return data as is (assumes data is already a list)
+                # Expected a list, but got a dict
+                if isinstance(data, dict):
+                    # If it looks like a single fact (has point/rank keys), wrap it
+                    if "point" in data or "rank" in data:
+                        logger.debug("Wrapping single fact dict into list")
+                        return [data]
+                    # Otherwise try to extract list from common keys
+                    for key in ["facts", "result", "data", "items", "atomic_facts"]:
+                        if key in data and isinstance(data[key], list):
+                            logger.debug(f"Extracted list from dict key '{key}'")
+                            return data[key]
+                    # No suitable list found
+                    logger.warning(
+                        f"Expected list but got dict with keys {list(data.keys())}; returning empty list"
+                    )
+                    return []
+                # Already a list, return as is
                 return data
-            # Check if it's a Pydantic model
+
+            # For non-list expected types (Pydantic model, etc.)
             if hasattr(response_format, "model_validate"):
                 return response_format.model_validate(data)
-            # Fallback: return raw data
+
             return data
+
         except Exception as e:
             name = getattr(response_format, "__name__", repr(response_format))
             raise ValueError(f"Failed to parse LLM response into {name}: {e}") from e

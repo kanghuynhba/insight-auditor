@@ -4,16 +4,6 @@ from src.response.toc_node_response import TocNodeResponse
 from src.response.base import BaseSchema
 
 
-class BookUploadResponse(BaseSchema):
-    """Response for book upload."""
-
-    id: str
-    title: str
-    author: Optional[str]
-    source_format: str
-    message: str = "Book uploaded successfully"
-
-
 class BookSummary(BaseSchema):
     """Book summary for list view."""
 

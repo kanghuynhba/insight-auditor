@@ -1,10 +1,13 @@
-from typing import Optional
+from typing import List, Optional
+from src.response.atomic_fact import AtomicFactResponse
 from src.response.base import BaseSchema
 
 
-class SectionDetailResponse(BaseSchema):
-    """Full section including raw_text and extraction_status."""
+class FactsResponse(BaseSchema):
+    section_id: str
+    extraction_status: str  # "NONE"|"PENDING"|"DONE"|"ERROR"
+    facts: List[AtomicFactResponse]
 
-    id: str
-    raw_text: Optional[str]
-    extraction_status: str
+
+class HintResponse(BaseSchema):
+    hint: str

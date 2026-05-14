@@ -52,14 +52,9 @@ class ChunkIngestionService:
 
         # Process all sections in parallel
         tasks = [
-            self._process_single_section(
-                section,
-                book_title=book.title,
-                chapter_title=chapter_title,
-            )
+            self._process_single_section(section, book.title, chapter_title)
             for section, chapter_title in sections_to_process
         ]
-
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Collect all chunks

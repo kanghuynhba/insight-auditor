@@ -48,10 +48,3 @@ class ExtractionStatus(str, Enum):
     PENDING = "PENDING"
     DONE = "DONE"
     ERROR = "ERROR"
-
-
-class TaskStatus(str, Enum):
-    PENDING = "PENDING"
-    RUNNING = "RUNNING"
-    DONE = "DONE"
-    ERROR = "ERROR"

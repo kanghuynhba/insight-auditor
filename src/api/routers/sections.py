@@ -1,16 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
-from typing import Optional
+from typing import List, Optional
 
+from src.services.facts_read_service import FactsReadService
 from src.core.exceptions import ExtractionNotReadyError
-from src.response.section import SectionDetailResponse
+from src.response.section import FactsResponse, HintResponse
 from src.response.audit_report import AuditReportResponse
 from src.infrastructure.persistence.summary_repo import SummaryRepository
-from src.services.task_service import TaskService
 from src.api.dependencies.storages import get_audit_report_repo, get_summary_repo
 from src.api.dependencies.services import (
+    get_facts_read_service,
     get_section_repo,
     get_audit_service,
-    get_task_service,
     get_facts_extraction_service,
 )
 from src.infrastructure.persistence.section_repo import SectionRepository
@@ -22,86 +22,41 @@ from src.request.summary_request import SummaryRequest
 router = APIRouter(prefix="/sections", tags=["sections"])
 
 
-# GET /sections/{section_id}
-@router.get("/{section_id}", response_model=SectionDetailResponse)
-async def get_section(
-    section_id: str,
-    section_repo: SectionRepository = Depends(get_section_repo),
-):
-    section = await section_repo.find_by_id(section_id)
-    if not section:
-        raise HTTPException(404, "Section not found")
-
-    return SectionDetailResponse(
-        id=section.id,
-        word_count=section.word_count,
-        raw_text=section.raw_text,
-        extraction_status=(
-            section.extraction_status.value
-            if hasattr(section.extraction_status, "value")
-            else section.extraction_status
-        ),
-    )
-
-
 # POST /sections/{section_id}/extract-facts
-@router.post("/{section_id}/extract-facts")
+@router.post("/{section_id}/extract-facts", status_code=202)
 async def extract_facts(
     section_id: str,
     force: bool = Query(False),
-    background_tasks: BackgroundTasks = None,
+    background_tasks: BackgroundTasks = BackgroundTasks(),
     section_repo: SectionRepository = Depends(get_section_repo),
     extraction_service: FactsExtractionService = Depends(get_facts_extraction_service),
-    task_service: TaskService = Depends(get_task_service),
 ):
     section = await section_repo.find_by_id(section_id)
     if not section:
         raise HTTPException(404, "Section not found")
-
-    # Fast path: already done and not forced
-    if section.extraction_status == ExtractionStatus.DONE and not force:
-        return await extraction_service.get_facts_for_section(section_id)
-
-    # Prevent concurrent extractions
     if section.extraction_status == ExtractionStatus.PENDING:
         raise HTTPException(409, "Extraction already in progress")
 
-    # Mark section as PENDING (optimistic lock)
+    # Mark as PENDING
     section.extraction_status = ExtractionStatus.PENDING
     await section_repo.save(section)
     await section_repo.session.commit()
 
-    # Create a PENDING task via TaskService
-    task = await task_service.create(
-        task_type="fact_extraction",
-        resource_type="section",
-        resource_id=section_id,
-        payload={"force": force},
-    )
-
-    # Enqueue background job: extraction_svc will update task status
     background_tasks.add_task(
-        extraction_service.extract_facts_by_section,
-        section_id=section_id,
-        force=force,
-        task_id=task.id,
+        extraction_service.extract_facts_by_section, section_id, force
     )
-
-    return {
-        "task_id": task.id,
-        "status_url": f"/tasks/{task.id}",
-        "extraction_status": "pending",
-    }
+    return {"section_id": section_id, "status": "pending"}
 
 
 # GET /sections/{section_id}/facts
-@router.get("/{section_id}/facts")
+@router.get("/{section_id}/facts", response_model=FactsResponse)
 async def get_facts(
     section_id: str,
-    extraction_service: FactsExtractionService = Depends(get_facts_extraction_service),
-):
+    facts_read_service: FactsReadService = Depends(get_facts_read_service),
+) -> FactsResponse:
+
     try:
-        return await extraction_service.get_facts_for_section(section_id)
+        return await facts_read_service.get_facts_by_section(section_id)
     except ExtractionNotReadyError as e:
         if "status:" in str(e):
             status = str(e).split("status: ")[-1].rstrip(")")
@@ -117,14 +72,14 @@ async def get_facts(
 
 
 # GET /sections/{section_id}/hints
-@router.get("/{section_id}/hints")
+@router.get("/{section_id}/hints", response_model=List[HintResponse])
 async def get_hints(
     section_id: str,
     attempt_number: Optional[int] = None,
     max_hints: int = Query(5, le=10),
     section_repo: SectionRepository = Depends(get_section_repo),
-    extraction_service: FactsExtractionService = Depends(get_facts_extraction_service),
-):
+    facts_read_service: FactsReadService = Depends(get_facts_read_service),
+) -> List[HintResponse]:
     section = await section_repo.find_by_id(section_id)
     if not section:
         raise HTTPException(404, "Section not found")
@@ -134,12 +89,11 @@ async def get_hints(
             400, "No facts extracted for this section – call extract-facts first"
         )
 
-    hints = await extraction_service.generate_hints(
+    return await facts_read_service.get_hints(
         section_id=section_id,
         attempt_number=attempt_number,
         max_hints=max_hints,
     )
-    return {"hints": hints}
 
 
 # POST /sections/{section_id}/evaluations
@@ -150,7 +104,7 @@ async def evaluate_summary(
     audit_svc: AuditService = Depends(get_audit_service),
     section_repo: SectionRepository = Depends(get_section_repo),
     summary_repo: SummaryRepository = Depends(get_summary_repo),
-):
+) -> AuditReportResponse:
     section = await section_repo.find_by_id(section_id)
     if not section:
         raise HTTPException(404, "Section not found")

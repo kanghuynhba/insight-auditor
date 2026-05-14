@@ -17,18 +17,15 @@ from pathlib import Path
 from src.response.toc_node_response import TocNodeResponse
 from src.api.storage import save_upload
 from src.response.book import (
-    BookUploadResponse,
     BookDetailResponse,
     BookSummary,
 )
 from src.services.book_extraction_service import BookExtractionService
-from src.services.chunk_ingestion_service import ChunkIngestionService
 from src.services.toc_service import TOCService
 from src.infrastructure.loaders.file_type import FileType
 from src.core.exceptions import UnsupportedFormatError
 from src.api.dependencies.services import (
     get_book_extraction_service,
-    get_chunk_ingestion_service,
     get_toc_service,
 )
 from src.api.dependencies.storages import (
@@ -103,7 +100,7 @@ async def get_book_file(
 EXTRACTED_BOOKS_DIR = Path("extracted_books")
 
 
-@router.post("/upload", response_model=BookUploadResponse)
+@router.post("/upload", response_model=BookSummary)
 async def upload_book(
     file: UploadFile = File(...),
     book_extraction: BookExtractionService = Depends(get_book_extraction_service),
@@ -129,10 +126,9 @@ async def upload_book(
 
     temp_path.unlink()
 
-    return BookUploadResponse(
+    return BookSummary(
         id=book.id,
         title=book.title,
         author=book.author,
         source_format=file_type.value,
-        message="Book uploaded successfully",
     )

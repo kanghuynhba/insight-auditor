@@ -1,15 +1,17 @@
 import asyncio
 import logging
 from typing import List, Optional
+from src.infrastructure.chunking.natural_boundary_chunker import NaturalBoundaryChunker
+from src.infrastructure.chunking.chunker import Chunker
 from src.core.exceptions import ExtractionNotReadyError
 from src.core.enums import ExtractionStatus
-from src.services.task_service import TaskService
 from src.core.text_chunk import TextChunk
 from src.infrastructure.persistence.base_repository import Repository
 from src.core.atomic_fact import AtomicFact
 from src.core.section import Section
 from src.index.operations.extract_facts import extract_facts
 from src.infrastructure.llm.completion.completion import LLMCompletion
+from src.core.config import get_settings
 from src.infrastructure.persistence.vector_base_repository import VectorRepository
 from src.infrastructure.prompts.index.extract_atomic_facts import (
     ATOMIC_FACT_SYSTEM,
@@ -23,66 +25,81 @@ class FactsExtractionService:
     def __init__(
         self,
         llm: LLMCompletion,
-        section_repo: Repository[Section],
-        fact_repo: Repository[AtomicFact],
-        vector_repo: VectorRepository,
-        task_service: Optional[TaskService] = None,
+        chunker: Optional[Chunker] = None,
+        section_repo: Repository[Section] = None,
+        fact_repo: Repository[AtomicFact] = None,
         concurrency: int = 1,
     ):
         self.llm = llm
-        self.vector_repo = vector_repo
         self.section_repo = section_repo
         self.fact_repo = fact_repo
-        self.task_service = task_service
         self.semaphore = asyncio.Semaphore(concurrency)
+        self.chunker = chunker
 
     async def extract_facts_by_section(
         self,
         section_id: str,
         force: bool = False,
-        task_id: Optional[str] = None,
     ) -> List[AtomicFact]:
-        chunks = await self.vector_repo.get_chunks_by_section(section_id)
+        """
+        Extract atomic facts from all chunks of a section.
+
+        Args:
+            section_id: The section to process
+            force: If True, delete existing facts for the section before extraction
+
+        Returns:
+            List of extracted AtomicFact objects
+        """
+        section = await self.section_repo.find_by_id(section_id)
+        if not section:
+            logger.error(f"Section {section_id} not found")
+            return []
+
+        logger.info(f"Extracting facts for section {section_id} (force={force})")
+
+        chunks: List[TextChunk] = self.chunker.chunk_section(section)
+
         if not chunks:
             logger.warning(f"No chunks found for section {section_id}")
             return []
 
         try:
-            if self.task_service and task_id:
-                await self.task_service.start(task_id)
-
+            # Process all chunks concurrently
             tasks = [self._process_chunk(chunk, force) for chunk in chunks]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            # B-07: compute failed once
+            # Check for failures and aggregate successful facts
             failed = any(isinstance(r, Exception) for r in results)
             all_facts = self._aggregate(results)
 
+            # Update section status based on outcome
             section = await self.section_repo.find_by_id(section_id)
             if section:
-                if failed:
-                    section.extraction_status = ExtractionStatus.ERROR
-                else:
-                    section.extraction_status = ExtractionStatus.DONE
+                section.extraction_status = (
+                    ExtractionStatus.ERROR if failed else ExtractionStatus.DONE
+                )
                 await self.section_repo.save(section)
                 await self.section_repo.session.commit()
 
-            if self.task_service and task_id:
-                await self.task_service.done(
-                    task_id, result={"facts_extracted": len(all_facts)}
+            if failed:
+                logger.warning(
+                    f"Section {section_id} completed with {sum(1 for r in results if isinstance(r, Exception))} failed chunks"
                 )
+
             return all_facts
 
         except Exception as e:
-            # B-03: rollback first, then update section status in a clean state
+            # Unexpected error – rollback and mark section as ERROR
             await self.section_repo.session.rollback()
             section = await self.section_repo.find_by_id(section_id)
             if section:
                 section.extraction_status = ExtractionStatus.ERROR
                 await self.section_repo.save(section)
                 await self.section_repo.session.commit()
-            if self.task_service and task_id:
-                await self.task_service.error(task_id, exc=e)
+            logger.exception(
+                f"Unexpected error during fact extraction for section {section_id}: {e}"
+            )
             raise
 
     async def _process_chunk(
@@ -111,46 +128,6 @@ class FactsExtractionService:
                 await self.fact_repo.save_all(facts)
                 logger.info(f"Saved {len(facts)} facts from chunk {chunk.id[:8]}")
             return facts
-
-    async def generate_hints(
-        self,
-        section_id: str,
-        attempt_number: Optional[int] = None,
-        max_hints: int = 5,
-    ) -> List[str]:
-        """Return one question per fact, prioritized by rank."""
-        facts = await self.fact_repo.find_by_section(section_id)
-        if not facts:
-            return []
-
-        # (Optional) filter by attempt_number – would need audit_repo
-        # For now, ignore attempt_number.
-
-        sorted_facts = sorted(facts, key=lambda f: f.rank.value)  # Critical first
-        hints = []
-        for fact in sorted_facts:
-            if fact.questions:
-                hints.append(fact.questions[0])
-            if len(hints) >= max_hints:
-                break
-        return hints
-
-    async def get_facts_for_section(self, section_id: str) -> dict:
-        """Return formatted facts or raise ValueError with status."""
-        section = await self.section_repo.find_by_id(section_id)
-        if not section:
-            raise ValueError(f"Section {section_id} not found")
-        if section.extraction_status != ExtractionStatus.DONE:
-            raise ExtractionNotReadyError(
-                status=section.extraction_status.value,
-                message="No facts extracted yet",
-            )
-        facts = await self.fact_repo.find_by_section(section_id)
-        return {
-            "section_id": section_id,
-            "extraction_status": "done",
-            "facts": [f.model_dump() for f in facts],
-        }
 
     @staticmethod
     def _aggregate(results: list) -> List[AtomicFact]:

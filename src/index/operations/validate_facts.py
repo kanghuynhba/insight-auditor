@@ -21,6 +21,19 @@ from src.infrastructure.prompts.index.validate_summary import (
 logger = logging.getLogger(__name__)
 
 MIN_WORD_COUNT = 50
+from pydantic import BaseModel, Field
+
+
+class ValidationItem(BaseModel):
+    fact_id: str
+    status: str
+    evidence: str
+    confidence: float
+    improved: Optional[bool] = None
+
+
+class ValidationResponse(BaseModel):
+    results: list[ValidationItem] = Field(alias="result")
 
 
 def _build_validations_str(validations: list[FactValidationResult]) -> str:
@@ -92,9 +105,10 @@ async def validate_facts(
             {"role": "system", "content": VALIDATION_SYSTEM},
             {"role": "user", "content": user_message},
         ],
-        response_format=list[dict],
+        response_format=ValidationResponse.model_json_schema(),
     )
 
+    print("LLM validation response:", response)
     raw = response.formatted_response
     if not raw:
         return []
@@ -104,6 +118,7 @@ async def validate_facts(
         try:
             results.append(
                 FactValidationResult(
+                    report_id="",  # to be filled in by caller
                     atomic_fact_id=item["fact_id"],
                     status=FactStatus(
                         item["status"].lower()

@@ -356,27 +356,11 @@ output.timing = ""
 # You can add your favorite queries here. They will be available in the
 # REPL when you type `\f` or `\f <query_name>`.
 [favorite_queries]
-atomic_facts = select * from atomic_facts order by path_id
-section_points_legacy = "SELECT b.title as book, s.title as section, af.point, af.rank, af.reason, af.questions FROM books b JOIN chapters c ON c.book_id=b.id JOIN sections s ON s.chapter_id=c.id LEFT JOIN atomic_facts_v1_legacy af ON af.section_id=s.id WHERE b.title LIKE '$1' AND s.title LIKE '$2' ORDER BY b.title ASC, s.path_id ASC;"
-section_points = "SELECT b.title as book, s.title as section, af.point, af.rank, af.reason, af.questions FROM books b JOIN chapters c ON c.book_id=b.id JOIN sections s ON s.chapter_id=c.id LEFT JOIN atomic_facts af ON af.section_id=s.id WHERE b.title LIKE '$1' AND s.title LIKE '$2' ORDER BY b.title ASC, s.path_id ASC;"
-count_facts = '''SELECT b.title as book, 
-                        s.title as section, 
-                        count(af.point) as count 
-                        FROM books b 
-                        JOIN chapters c ON c.book_id=b.id 
-                        JOIN sections s ON s.chapter_id=c.id 
-                        LEFT JOIN atomic_facts af ON af.section_id=s.id 
-                        GROUP BY b.title, s.title, s.path_id 
-                        ORDER BY b.title ASC, s.path_id ASC;'''
-count_facts_legacy = '''SELECT b.title as book, 
-                        s.title as section, 
-                        count(af.point) as count 
-                        FROM books b 
-                        JOIN chapters c ON c.book_id=b.id 
-                        JOIN sections s ON s.chapter_id=c.id 
-                        LEFT JOIN atomic_facts_v1_legacy af ON af.section_id=s.id 
-                        GROUP BY b.title, s.title, s.path_id 
-                        ORDER BY b.title ASC, s.path_id ASC;'''
+find_text_by_book = '''SELECT b.title, s.raw_text
+FROM book b
+JOIN table_of_content toc ON b.id = toc.book_id
+JOIN section s ON toc.section_id = s.id
+WHERE b.title LIKE CONCAT('%', '$1', '%')'''
 # example = "SELECT * FROM example_table WHERE id = 1"
 
 # Initial commands to execute when connecting to any database.

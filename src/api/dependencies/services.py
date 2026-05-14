@@ -1,7 +1,5 @@
 from fastapi import Depends
 from src.infrastructure.loaders.epub_loader import EpubLoader
-from src.infrastructure.persistence.task_repo import TaskRepository
-from src.services.task_service import TaskService
 from src.core.config import get_settings
 from src.infrastructure.loaders.file_type import FileType
 from src.infrastructure.loaders.pdf_loader import PdfLoader
@@ -17,6 +15,7 @@ from src.infrastructure.persistence.audit_report_repo import AuditReportReposito
 from src.services.book_extraction_service import BookExtractionService
 from src.services.chunk_ingestion_service import ChunkIngestionService
 from src.services.facts_extraction_service import FactsExtractionService
+from src.services.facts_read_service import FactsReadService
 from src.services.audit_service import AuditService
 from src.services.toc_service import TOCService
 from src.api.dependencies.llm import get_llm_completion, get_llm_embedding
@@ -26,7 +25,6 @@ from src.api.dependencies.storages import (
     get_atomic_fact_repo,
     get_audit_report_repo,
     get_summary_repo,
-    get_task_repo,
     get_section_repo,
 )
 from src.api.dependencies.vector import get_vector_repo
@@ -59,11 +57,24 @@ def get_chunk_ingestion_service(
 
 def get_facts_extraction_service(
     llm: LiteLLMCompletion = Depends(get_llm_completion),
+    chunker: NaturalBoundaryChunker = Depends(lambda: NaturalBoundaryChunker(settings)),
     section_repo: SectionRepository = Depends(get_section_repo),
     fact_repo: AtomicFactRepository = Depends(get_atomic_fact_repo),
-    vector_repo: VectorRepository = Depends(get_vector_repo),
 ) -> FactsExtractionService:
-    return FactsExtractionService(llm, section_repo, fact_repo, vector_repo)
+    return FactsExtractionService(
+        llm,
+        chunker,
+        section_repo,
+        fact_repo,
+    )
+
+
+def get_facts_read_service(
+    fact_repo: AtomicFactRepository = Depends(get_atomic_fact_repo),
+    section_repo: SectionRepository = Depends(get_section_repo),
+) -> FactsExtractionService:
+
+    return FactsReadService(fact_repo, section_repo)
 
 
 def get_audit_service(
@@ -73,7 +84,3 @@ def get_audit_service(
     audit_repo: AuditReportRepository = Depends(get_audit_report_repo),
 ) -> AuditService:
     return AuditService(llm, fact_repo, summary_repo, audit_repo)
-
-
-def get_task_service(task_repo: TaskRepository = Depends(get_task_repo)):
-    return TaskService(task_repo)
