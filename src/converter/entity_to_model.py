@@ -1,4 +1,3 @@
-# src/converter/entity_to_model.py
 """Converters: SQLModel entities  →  service models.
 
 Rules
@@ -6,6 +5,9 @@ Rules
 * Functions are pure (no I/O, no side effects).
 * Entities stay *inside* the repository layer; nothing in ``src/model/``
   ever imports from ``src/core/`` directly.
+* Job-tracking infrastructure (``JobStore``, ``ExtractionJobModel``,
+  ``ExtractionStatusModel``) has been removed – the service returns a plain
+  ``dict`` and the router converts it directly to the relevant response DTO.
 * All functions carry full type hints and docstrings.
 """
 
@@ -15,7 +17,6 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from src.model.audit_models import AuditReportModel, FactFeedbackModel
 from src.model.book_models import BookDetailModel, BookSummaryModel
-from src.model.extraction_models import ExtractionJobModel, ExtractionStatusModel
 from src.model.fact_models import AtomicFactModel
 from src.model.section_models import FactsModel, SectionModel
 from src.model.toc_node_model import TocNodeModel
@@ -165,8 +166,7 @@ def facts_to_model(
         section_id:        The section these facts belong to.
         extraction_status: Current :class:`~src.core.enums.ExtractionStatus` value.
         facts:             List of :class:`~src.core.atomic_fact.AtomicFact` entities.
-        hints:             Optional list of hint strings (from
-                           :meth:`~src.services.facts_read_service.FactsReadService.get_hints`).
+        hints:             Optional list of hint strings.
 
     Returns:
         An immutable :class:`FactsModel`.
@@ -176,57 +176,6 @@ def facts_to_model(
         extraction_status=extraction_status,
         facts=[atomic_fact_entity_to_model(f) for f in facts],
         hints=hints or [],
-    )
-
-
-# ---------------------------------------------------------------------------
-# Extraction job converters (in-memory job dict → model)
-# ---------------------------------------------------------------------------
-
-
-def job_dict_to_extraction_job_model(
-    job_id: str, data: Dict[str, Any]
-) -> ExtractionJobModel:
-    """Convert an in-memory job-store entry to an :class:`ExtractionJobModel`.
-
-    Args:
-        job_id: UUID string that identifies the job.
-        data:   The dict stored in :class:`~src.core.job_store.JobStore`.
-
-    Returns:
-        An immutable :class:`ExtractionJobModel`.
-
-    Raises:
-        KeyError: When required keys are missing from ``data``.
-    """
-    return ExtractionJobModel(
-        job_id=job_id,
-        section_id=data["section_id"],
-        status=data["status"],
-        created_at=data["created_at"],
-        message=data.get("message"),
-    )
-
-
-def job_dict_to_extraction_status_model(
-    job_id: str, data: Dict[str, Any]
-) -> ExtractionStatusModel:
-    """Convert an in-memory job-store entry to an :class:`ExtractionStatusModel`.
-
-    Args:
-        job_id: UUID string that identifies the job.
-        data:   The dict stored in :class:`~src.core.job_store.JobStore`.
-
-    Returns:
-        An immutable :class:`ExtractionStatusModel`.
-    """
-    return ExtractionStatusModel(
-        job_id=job_id,
-        status=data["status"],
-        progress=data.get("progress"),
-        result_summary=data.get("result_summary"),
-        error=data.get("error"),
-        completed_at=data.get("completed_at"),
     )
 
 
