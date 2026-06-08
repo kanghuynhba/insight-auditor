@@ -1,5 +1,5 @@
-from src.core.config import get_settings
-from src.infrastructure.adapters.mariadb.database_context import DatabaseContext
+from src.domain.config import get_settings
+from src.store._sql import DatabaseContext
 
 settings = get_settings()
 

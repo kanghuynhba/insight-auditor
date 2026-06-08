@@ -41,3 +41,6 @@ uploads/
 
 # Agent markdown
 AGENTS.md
+
+# Extracted books
+extracted_books/

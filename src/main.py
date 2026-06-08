@@ -8,9 +8,9 @@ logging.basicConfig(
 )
 
 from fastapi import FastAPI
-from src.core.config import get_settings
-from src.infrastructure.adapters.mariadb.database_context import DatabaseContext
-from src.api.routers import books, sections
+from src.domain.config import get_settings
+from src.store._sql import DatabaseContext
+from src.api.routers import audit_reports, books, extraction_jobs, jobs, sections
 from fastapi.middleware.cors import CORSMiddleware
 
 # audit router is deprecated; keep only if needed for backward compatibility
@@ -32,6 +32,9 @@ app.add_middleware(
 # Register routers
 app.include_router(books.router)
 app.include_router(sections.router)  # new sections router
+app.include_router(audit_reports.router)
+app.include_router(extraction_jobs.router)
+app.include_router(jobs.router)
 
 # Optionally keep audit router for legacy endpoints (e.g., /audit/...)
 # but mark as deprecated. For now, we'll keep it but you can remove later.

@@ -1,4 +1,4 @@
-"""Response DTO for the POST /sections/{section_id}/extract-facts endpoint."""
+"""Response DTOs for section fact extraction endpoints."""
 
 from __future__ import annotations
 
@@ -22,3 +22,8 @@ class ExtractFactResponse(BaseSchema):
     status: Literal["pending", "running", "completed", "failed"]
     created_at: datetime
     message: Optional[str] = None
+
+
+class FactExtractionJobResponse(BaseSchema):
+    extraction_job_id: str
+    status: str = "queued"

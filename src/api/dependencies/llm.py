@@ -1,6 +1,6 @@
-from src.core.config import get_settings
-from src.infrastructure.llm.completion.lite_llm_completion import LiteLLMCompletion
-from src.infrastructure.llm.embedding.lite_llm_embedding import LiteLLMEmbedding
+from src.domain.config import get_settings
+from src.llm._completion import LiteLLMCompletion
+from src.llm._embedding import LiteLLMEmbedding
 
 settings = get_settings()
 

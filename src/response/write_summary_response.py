@@ -1,4 +1,4 @@
-"""Response DTO for the POST /sections/{section_id}/evaluations endpoint."""
+"""Response DTO for legacy summary evaluation endpoints."""
 
 from __future__ import annotations
 

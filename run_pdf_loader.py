@@ -2,24 +2,11 @@
 import sys
 from pathlib import Path
 
-# Add the project root to path so that 'src' can be found
 sys.path.insert(0, str(Path(__file__).parent))
 
-
-# Create a dummy Settings class that the loader expects but never uses
-class DummySettings:
-    pass
-
-
-# Monkey-patch the config module before importing PdfLoader
-import types
-
-fake_config = types.ModuleType("src.core.config")
-fake_config.Settings = DummySettings
-sys.modules["src.core.config"] = fake_config
-
-# Now import PdfLoader – it will find the fake config
-from src.infrastructure.loaders.pdf_loader import PdfLoader
+from src.domain.config import get_settings
+from src.ingestion._loaders import PdfLoader
+from src.ingestion._toc import TOCService
 
 
 def main():
@@ -34,26 +21,28 @@ def main():
         sys.exit(1)
 
     print(f"Loading {pdf_path} ...")
-    loader = PdfLoader(DummySettings())  # dummy settings
-    book = loader.load(pdf_path)
+    loader = PdfLoader(get_settings())
+    extracted = loader.extract_raw(pdf_path)
+    book_id = loader.get_stable_id(pdf_path)
+    toc_data = TOCService.to_book_toc(extracted.toc_root, book_id)
+    sections = extracted.toc_root.get_all_sections()
 
-    print(f"Title: {book.title}")
-    print(f"Author: {book.author}")
-    print(f"Total TOC entries: {len(book.toc)}")
+    print(f"Title: {extracted.title}")
+    print(f"Author: {extracted.author}")
+    print(f"Total TOC entries: {len(toc_data)}")
 
     output_dir = Path("output_markdown")
     output_dir.mkdir(exist_ok=True)
 
-    for toc_entry in book.toc:
-        section = toc_entry.section
-        if section and section.raw_text:
+    for section in sections:
+        if section.raw_text:
             safe_title = section.title.replace("/", "_").replace("\\", "_")
-            filename = f"{section.path_id}_{safe_title}.md"
+            filename = f"{section.order:04d}_{safe_title}.md"
             filepath = output_dir / filename
             filepath.write_text(section.raw_text, encoding="utf-8")
             print(f"Saved: {filepath.name}")
         else:
-            print(f"Skipped (no content): {toc_entry.title}")
+            print(f"Skipped (no content): {section.title}")
 
 
 if __name__ == "__main__":

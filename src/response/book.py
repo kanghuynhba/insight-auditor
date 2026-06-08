@@ -11,6 +11,7 @@ class BookSummary(BaseSchema):
     title: str
     author: Optional[str]
     source_format: str
+    upload_status: str = "ready"
 
 
 class BookDetailResponse(BaseSchema):
@@ -20,5 +21,16 @@ class BookDetailResponse(BaseSchema):
     title: str
     author: Optional[str]
     source_format: str
+    upload_status: str = "ready"
     file_url: str
     toc: TocNodeResponse
+
+
+class DeleteBookResponse(BaseSchema):
+    """Response returned after deleting a book and derived data."""
+
+    book_id: str
+    deleted_sections: int
+    deleted_summaries: int
+    deleted_reports: int
+    deleted_facts: int

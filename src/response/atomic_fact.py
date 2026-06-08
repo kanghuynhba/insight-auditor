@@ -1,6 +1,6 @@
 # src/response/atomic_fact.py
 from typing import List, Optional
-from src.core.atomic_fact import AtomicFact
+from src.domain.atomic_fact import AtomicFact
 from src.response.base import BaseSchema
 
 

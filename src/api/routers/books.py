@@ -17,26 +17,19 @@ from typing import List
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
-from src.api.dependencies.services import (
-    get_book_extraction_service,
-    get_book_repo,
-    get_toc_service,
-)
+from src.api.dependencies.wiring import get_ingestion, get_job_service
 from src.api.storage import save_upload
-from src.converter.entity_to_model import book_entity_to_detail_model, toc_node_to_model
-from src.converter.model_to_response import (
-    book_detail_model_to_response,
-    book_summary_model_to_response,
+from src.domain import Book, UnsupportedFormatError, new_id
+from src.ingestion._loaders import FileType
+from src.ingestion import (
+    BookIngestion,
+    book_detail_response,
+    book_summary_response,
+    delete_book_response,
 )
-from src.core.exceptions import UnsupportedFormatError
-from src.infrastructure.loaders.epub_loader import EpubLoader
-from src.infrastructure.loaders.file_type import FileType
-from src.infrastructure.persistence.book_repo import BookRepository
-from src.response.book import BookDetailResponse, BookSummary
-from src.response.toc_node_response import TocNodeResponse
+from src.jobs import JobService
+from src.response.book import BookDetailResponse, BookSummary, DeleteBookResponse
 from src.response.upload_book_response import UploadBookResponse
-from src.services.book_extraction_service import BookExtractionService
-from src.services.toc_service import TOCService
 
 router = APIRouter(prefix="/books", tags=["books"])
 
@@ -50,14 +43,14 @@ EXTRACTED_BOOKS_DIR = Path("extracted_books")
 
 @router.get("", response_model=List[BookSummary])
 async def list_books(
-    book_extraction: BookExtractionService = Depends(get_book_extraction_service),
+    ingestion: BookIngestion = Depends(get_ingestion),
 ) -> List[BookSummary]:
     """List all books.
 
     Returns a flat list of :class:`~src.response.book.BookSummary` DTOs.
     """
-    models = await book_extraction.get_books()
-    return [book_summary_model_to_response(m) for m in models]
+    models = await ingestion.get_books()
+    return [book_summary_response(model) for model in models]
 
 
 # ---------------------------------------------------------------------------
@@ -69,23 +62,19 @@ async def list_books(
 async def get_book(
     book_id: str,
     request: Request,
-    book_repo: BookRepository = Depends(get_book_repo),
-    toc_service: TOCService = Depends(get_toc_service),
+    ingestion: BookIngestion = Depends(get_ingestion),
 ) -> BookDetailResponse:
     """Retrieve full book details including the TOC tree.
 
     The ``file_url`` field in the response points to
     ``GET /books/{book_id}/file``.
     """
-    book = await book_repo.find_by_id(book_id)
-    if not book:
+    file_url = str(request.url_for("get_book_file", book_id=book_id))
+    detail_model = await ingestion.get_book_detail(book_id, file_url)
+    if not detail_model:
         raise HTTPException(404, "Book not found")
 
-    toc_model = toc_service.to_tree(book.table_of_contents)
-    file_url = str(request.url_for("get_book_file", book_id=book_id))
-
-    detail_model = book_entity_to_detail_model(book, toc_model, file_url)
-    return book_detail_model_to_response(detail_model)
+    return book_detail_response(detail_model)
 
 
 # ---------------------------------------------------------------------------
@@ -96,10 +85,10 @@ async def get_book(
 @router.get("/{book_id}/file")
 async def get_book_file(
     book_id: str,
-    book_repo: BookRepository = Depends(get_book_repo),
+    ingestion: BookIngestion = Depends(get_ingestion),
 ) -> FileResponse:
     """Serve the original source file (EPUB or PDF) for download."""
-    book = await book_repo.find_by_id(book_id)
+    book = await ingestion.get_book(book_id)
     if not book:
         raise HTTPException(404, "Book not found")
 
@@ -114,54 +103,66 @@ async def get_book_file(
 
 
 # ---------------------------------------------------------------------------
+# DELETE /books/{book_id}
+# ---------------------------------------------------------------------------
+
+
+@router.delete("/{book_id}", response_model=DeleteBookResponse)
+async def delete_book(
+    book_id: str,
+    ingestion: BookIngestion = Depends(get_ingestion),
+) -> DeleteBookResponse:
+    """Delete a book plus its sections, facts, summaries, audit data, and chunks."""
+    try:
+        result = await ingestion.delete_book(book_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(500, f"Delete failed: {exc}") from exc
+
+    return delete_book_response(result)
+
+
+# ---------------------------------------------------------------------------
 # POST /books/upload
 # ---------------------------------------------------------------------------
 
 
-@router.post("/upload", response_model=UploadBookResponse, status_code=201)
+@router.post("/upload", response_model=UploadBookResponse, status_code=202)
 async def upload_book(
     file: UploadFile = File(...),
-    book_extraction: BookExtractionService = Depends(get_book_extraction_service),
+    ingestion: BookIngestion = Depends(get_ingestion),
+    jobs: JobService = Depends(get_job_service),
 ) -> UploadBookResponse:
-    """Upload and process a book file.
-
-    * Returns **201 Created** when the book is new (``status="new"``).
-    * Returns **200 OK** when the book already exists (``status="exists"``).
-      (FastAPI uses the declared ``status_code=201`` for new books; for existing
-      books the service signals ``status="exists"`` in the body – no separate
-      HTTP status override is needed for API clients that check the body.)
-
-    The response body is always an :class:`~src.response.upload_book_response.UploadBookResponse`.
-
-    **Migration note:** previous clients received a :class:`~src.response.book.BookSummary`
-    from this endpoint.  The new response shape is
-    ``{book_id, status, message}`` which is lighter and action-oriented.
-    Clients that need full book details should follow up with
-    ``GET /books/{book_id}``.
-    """
+    """Store an uploaded book and enqueue durable parsing work."""
+    filename = file.filename or ""
     try:
-        file_type = FileType.from_filename(file.filename)
+        file_type = FileType.from_filename(filename)
     except UnsupportedFormatError as exc:
         raise HTTPException(400, str(exc)) from exc
 
-    temp_path = await save_upload(file)
-
+    upload_path = await save_upload(file)
+    book_id = new_id()
     try:
-        result = await book_extraction.extract_and_persist_metadata(
-            temp_path, file_type
+        book = Book(
+            id=book_id,
+            title=Path(filename).stem or "Untitled",
+            author=None,
+            source_format=file_type.value,
+            file_path=str(upload_path),
+            source_filename=filename,
+            upload_status="uploaded",
+            table_of_content=[],
         )
+        await ingestion.store.save_book(book)
+        job = await jobs.enqueue_parse_book(book.id)
     except Exception as exc:
-        temp_path.unlink(missing_ok=True)
-        raise HTTPException(500, f"Extraction failed: {exc}") from exc
-
-    # EPUB: extract contents to static dir so the reader can serve chapters
-    if file_type == FileType.Epub:
-        EpubLoader.extract_to_static(temp_path, result.book_id, EXTRACTED_BOOKS_DIR)
-
-    temp_path.unlink(missing_ok=True)
+        upload_path.unlink(missing_ok=True)
+        raise HTTPException(500, f"Upload failed: {exc}") from exc
 
     return UploadBookResponse(
-        book_id=result.book_id,
-        status=result.status,
-        message=result.message,
+        book_id=book.id,
+        job_id=job.id,
+        status="uploaded",
+        message="Book uploaded. Parsing job queued.",
     )

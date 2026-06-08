@@ -1,9 +1,5 @@
 CREATE DATABASE IF NOT EXISTS insight_auditor;
+CREATE DATABASE IF NOT EXISTS insight_auditor_test;
 
-use insight_auditor;
-
-CREATE TABLE IF NOT EXISTS atomic_facts (
-    id VARCHAR(255) PRIMARY KEY,
-    body LONGTEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
+-- Table creation is handled by SQLModel on application startup.
+-- Run this script only to ensure the local MariaDB databases exist.

@@ -1,7 +1,7 @@
 # src/response/toc_node_response.py
 from typing import List, Optional
 
-from src.core.toc_node import TocNode
+from src.domain.toc_node import TocNode
 from src.response.base import BaseSchema
 
 
